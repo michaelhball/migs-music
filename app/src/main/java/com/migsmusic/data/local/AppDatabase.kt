@@ -2,6 +2,8 @@ package com.migsmusic.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.migsmusic.data.local.dao.PlaybackSnapshotDao
 import com.migsmusic.data.local.dao.PlaylistDao
 import com.migsmusic.data.local.dao.SongDao
@@ -17,7 +19,7 @@ import com.migsmusic.data.local.entity.SongEntity
         PlaylistSongEntity::class,
         PlaybackSnapshotEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,3 +29,17 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun playbackSnapshotDao(): PlaybackSnapshotDao
 }
+
+/**
+ * v3 adds `playlist_songs.originalPosition` so users can revert a manually-reordered playlist
+ * to the order it was imported / added in. We backfill from the existing `position` so any
+ * playlists already on the device get a sensible default (i.e. their current order at the
+ * time of upgrade becomes the new "original").
+ */
+val MIGRATION_2_3 =
+    object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE playlist_songs ADD COLUMN originalPosition INTEGER")
+            db.execSQL("UPDATE playlist_songs SET originalPosition = position")
+        }
+    }

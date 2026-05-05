@@ -156,6 +156,14 @@ class PlaylistsViewModel(
         viewModelScope.launch { playlistRepository.moveSong(playlistId, fromIndex, toIndex) }
     }
 
+    /**
+     * Reverts every song in [playlistId] to its `originalPosition` — i.e. the order it was
+     * imported from M3U / added in. The user-facing wording is "Restore import order".
+     */
+    fun restoreOriginalOrder(playlistId: Long) {
+        viewModelScope.launch { playlistRepository.restoreOriginalOrder(playlistId) }
+    }
+
     fun playPlaylist(
         songs: List<PlaylistSong>,
         startIndex: Int,

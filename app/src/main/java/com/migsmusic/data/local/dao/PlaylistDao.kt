@@ -111,6 +111,25 @@ interface PlaylistDao {
     )
 
     /**
+     * Resets every song in [playlistId] back to its `originalPosition` — i.e. the order it
+     * was imported / added in. No-op for legacy rows whose originalPosition is null.
+     */
+    @Query(
+        """
+        UPDATE playlist_songs
+        SET position = originalPosition
+        WHERE playlistId = :playlistId AND originalPosition IS NOT NULL
+        """,
+    )
+    suspend fun restoreOriginalOrder(playlistId: Long)
+
+    /** True if the playlist has at least one row with a known originalPosition. */
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM playlist_songs WHERE playlistId = :playlistId AND originalPosition IS NOT NULL)",
+    )
+    suspend fun hasOriginalOrder(playlistId: Long): Boolean
+
+    /**
      * Atomic single-row reorder: shifts the rows in the affected range and re-positions the
      * moved row. Three SQL statements instead of `O(N)` row updates.
      */

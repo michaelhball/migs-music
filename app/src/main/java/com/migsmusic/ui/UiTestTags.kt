@@ -72,6 +72,7 @@ object UiTestTags {
     const val PlaylistDetailRename = "playlist_detail_rename"
     const val PlaylistDetailPlay = "playlist_detail_play"
     const val PlaylistDetailShuffle = "playlist_detail_shuffle"
+    const val PlaylistDetailRestoreOrder = "playlist_detail_restore_order"
     const val PlaylistSongRow = "playlist_song_row"
     const val PlaylistSongMoveUp = "playlist_song_up"
     const val PlaylistSongMoveDown = "playlist_song_down"

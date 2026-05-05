@@ -53,6 +53,9 @@ class PlaylistRepository(
                 songId = songId,
                 position = nextPosition,
                 addedAtMillis = System.currentTimeMillis(),
+                // Capture the canonical "as added" order so the user can revert any manual
+                // reordering later via "Restore import order".
+                originalPosition = nextPosition,
             ),
         )
     }
@@ -87,7 +90,8 @@ class PlaylistRepository(
 
     /**
      * Creates a fresh playlist with [name] and adds [songIds] in order. Used by the M3U
-     * import flow. Returns the new playlist id.
+     * import flow. Returns the new playlist id. Each song gets `originalPosition` set to
+     * its index in [songIds], which is the M3U import order.
      */
     suspend fun createPlaylistWithSongs(
         name: String,
@@ -97,6 +101,17 @@ class PlaylistRepository(
         songIds.forEach { addSong(playlistId, it) }
         return playlistId
     }
+
+    /**
+     * Resets the playlist's song order back to the order songs were imported / added in.
+     * Use after the user has manually reordered and wants to revert. No-op for legacy rows
+     * (pre-v3) without an `originalPosition` — though the migration backfilled those.
+     */
+    suspend fun restoreOriginalOrder(playlistId: Long) {
+        playlistDao.restoreOriginalOrder(playlistId)
+    }
+
+    suspend fun hasOriginalOrder(playlistId: Long): Boolean = playlistDao.hasOriginalOrder(playlistId)
 
     private suspend fun normalizePlaylistPositions(playlistId: Long) {
         val normalized =

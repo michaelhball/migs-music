@@ -98,19 +98,22 @@ fun MigsMusicApp(
         }
     }
 
-    // Persist whether we're on the player route so a cold start lands the user back there
-    // (rather than the default Songs tab). The pref is read once on launch (below); from
-    // then on we keep it in sync with the NavController's current route.
+    // Snapshot the persisted "was on player" flag at composition start, then check it once
+    // in a LaunchedEffect below. We read it via `remember` (not from inside the LaunchedEffect)
+    // to avoid a race where the route-tracking effect could overwrite the pref to `false`
+    // before our restore effect reads it on a cold start that lands directly on Songs.
+    val shouldRestorePlayerRoute = remember { appContainer.preferences.wasOnPlayerRoute }
+
+    // Keep the pref in sync with the NavController's current route so the next cold start
+    // knows where to land.
     LaunchedEffect(currentRoute) {
         if (currentRoute != null) {
             appContainer.preferences.wasOnPlayerRoute = currentRoute == "player"
         }
     }
-    // One-shot restore on cold start: if the user was on the player when last seen, jump
-    // back. Reset the flag immediately so subsequent in-process recreations (e.g. a config
-    // change) don't re-trigger this.
+    // One-shot restore on cold start: if the snapshot says we were on the player, jump back.
     LaunchedEffect(Unit) {
-        if (appContainer.preferences.wasOnPlayerRoute) {
+        if (shouldRestorePlayerRoute) {
             navController.navigate("player") { launchSingleTop = true }
         }
     }
@@ -268,7 +271,12 @@ fun MigsMusicApp(
                             navController.navigate("folder/${folder.encodedPath()}")
                         },
                         onNavigateToFolder = { path ->
-                            navController.navigate("folder/${java.net.URLEncoder.encode(path, "UTF-8")}")
+                            // Tapping a breadcrumb ancestor pops back to it if it's on the
+                            // stack rather than pushing a duplicate. Fresh navigate as fallback.
+                            val target = "folder/${java.net.URLEncoder.encode(path, "UTF-8")}"
+                            if (!navController.popBackStack(route = target, inclusive = false)) {
+                                navController.navigate(target)
+                            }
                         },
                         onGoToAlbum = { album, artist ->
                             val key = "$album|||$artist"
@@ -297,7 +305,10 @@ fun MigsMusicApp(
                         },
                         onGoUp = { navController.popBackStack() },
                         onNavigateToFolder = { path ->
-                            navController.navigate("folder/${java.net.URLEncoder.encode(path, "UTF-8")}")
+                            val target = "folder/${java.net.URLEncoder.encode(path, "UTF-8")}"
+                            if (!navController.popBackStack(route = target, inclusive = false)) {
+                                navController.navigate(target)
+                            }
                         },
                         onGoToAlbum = { album, artist ->
                             val key = "$album|||$artist"

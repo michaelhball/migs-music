@@ -32,4 +32,11 @@ data class PlaylistSongEntity(
     val songId: Long,
     val position: Int,
     val addedAtMillis: Long,
+    /**
+     * The position this song held when first added to the playlist. Captured at insert time
+     * (M3U-import order, or manual-add order) and never mutated by reorder operations. Lets
+     * the user "Restore import order" after manually reordering. Nullable for forward compat
+     * with rows from before the v3 migration; the migration backfills this to equal `position`.
+     */
+    val originalPosition: Int? = null,
 )

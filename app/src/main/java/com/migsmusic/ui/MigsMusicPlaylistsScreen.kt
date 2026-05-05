@@ -519,6 +519,19 @@ internal fun PlaylistDetailRoute(
             ) {
                 Text("Shuffle Playlist")
             }
+            // Available whenever the playlist has at least one song with a known import-time
+            // position (which is everything created on v3+ and any pre-existing playlists
+            // whose rows were backfilled by the v2→v3 migration).
+            TextButton(
+                onClick = {
+                    playlistsViewModel.restoreOriginalOrder(playlistId)
+                    snackbar.show("Restored to import order")
+                },
+                enabled = songs.isNotEmpty(),
+                modifier = Modifier.testTag(UiTestTags.PlaylistDetailRestoreOrder),
+            ) {
+                Text("Restore order")
+            }
             Spacer(Modifier.weight(1f))
             SortMenu(
                 current = contentSort,
