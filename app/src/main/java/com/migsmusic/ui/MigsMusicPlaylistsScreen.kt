@@ -1,29 +1,43 @@
 package com.migsmusic.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -32,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,8 +61,25 @@ internal fun PlaylistsRoute(
     onOpenPlaylist: (Long) -> Unit,
 ) {
     val playlists by playlistsViewModel.playlists.collectAsStateWithLifecycle()
+    val importStaging by playlistsViewModel.importStaging.collectAsStateWithLifecycle()
     var showDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableLongStateOf(-1L) }
+    var overflowOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val importLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            // Read the file synchronously here; it's a small text file. Pass parsed content
+            // (not the URI) to the VM so the VM stays Android-context-free.
+            val content =
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                }.getOrNull().orEmpty()
+            if (content.isBlank()) return@rememberLauncherForActivityResult
+            val defaultName = filenameFromUri(uri).removeSuffix(".m3u").removeSuffix(".m3u8")
+            playlistsViewModel.previewM3uImport(content, defaultName)
+        }
 
     if (showDialog) {
         NameDialog(
@@ -73,6 +105,14 @@ internal fun PlaylistsRoute(
         )
     }
 
+    importStaging?.let { staging ->
+        M3uImportDialog(
+            staging = staging,
+            onCancel = { playlistsViewModel.cancelM3uImport() },
+            onConfirm = { name -> playlistsViewModel.commitM3uImport(name) },
+        )
+    }
+
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
@@ -83,51 +123,197 @@ internal fun PlaylistsRoute(
             }
         },
     ) { innerPadding ->
-        if (playlists.isEmpty()) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .testTag(UiTestTags.PlaylistsScreen),
-            ) {
-                EmptyState("No playlists yet.\nTap + to create one.")
-            }
-            return@Scaffold
-        }
-        LazyColumn(
+        Column(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .testTag(UiTestTags.PlaylistsScreen),
         ) {
-            itemsIndexed(playlists, key = { _, item -> item.id }) { _, playlist ->
-                ListRow(
-                    title = playlist.name,
-                    subtitle = "${playlist.songCount} songs",
-                    modifier =
-                        Modifier
-                            .testTag(UiTestTags.PlaylistRow)
-                            .clickable { onOpenPlaylist(playlist.id) },
-                    actions = {
-                        SmallActionButton(
-                            label = "Rename",
-                            modifier = Modifier.testTag(UiTestTags.PlaylistRenameButton),
-                            onClick = { renameTarget = playlist.id },
+            // Overflow ⋮ in the screen header — host for "Import from M3U file". Only the
+            // import action lives here for now; "New playlist" remains the FAB so the
+            // primary action stays one tap away.
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(end = 8.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Box {
+                    IconButton(
+                        onClick = { overflowOpen = true },
+                        modifier = Modifier.testTag(UiTestTags.PlaylistOverflow),
+                    ) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                    }
+                    DropdownMenu(
+                        expanded = overflowOpen,
+                        onDismissRequest = { overflowOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Import from M3U file") },
+                            onClick = {
+                                overflowOpen = false
+                                importLauncher.launch(
+                                    arrayOf(
+                                        "audio/x-mpegurl",
+                                        "audio/mpegurl",
+                                        "application/vnd.apple.mpegurl",
+                                        "application/x-mpegurl",
+                                        "*/*",
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.testTag(UiTestTags.PlaylistImportFromM3u),
                         )
-                        IconButton(
-                            onClick = { playlistsViewModel.deletePlaylist(playlist.id) },
-                            modifier = Modifier.testTag(UiTestTags.PlaylistDeleteButton),
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete playlist")
-                        }
-                    },
-                )
-                HorizontalDivider()
+                    }
+                }
+            }
+            if (playlists.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    EmptyState("No playlists yet.\nTap + to create one.")
+                }
+                return@Column
+            }
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                itemsIndexed(playlists, key = { _, item -> item.id }) { _, playlist ->
+                    ListRow(
+                        title = playlist.name,
+                        subtitle = "${playlist.songCount} songs",
+                        modifier =
+                            Modifier
+                                .testTag(UiTestTags.PlaylistRow)
+                                .clickable { onOpenPlaylist(playlist.id) },
+                        actions = {
+                            SmallActionButton(
+                                label = "Rename",
+                                modifier = Modifier.testTag(UiTestTags.PlaylistRenameButton),
+                                onClick = { renameTarget = playlist.id },
+                            )
+                            IconButton(
+                                onClick = { playlistsViewModel.deletePlaylist(playlist.id) },
+                                modifier = Modifier.testTag(UiTestTags.PlaylistDeleteButton),
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete playlist")
+                            }
+                        },
+                    )
+                    HorizontalDivider()
+                }
             }
         }
     }
+}
+
+@Composable
+private fun M3uImportDialog(
+    staging: M3uImportStaging,
+    onCancel: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember(staging) { mutableStateOf(staging.defaultName) }
+    var unmatchedExpanded by remember(staging) { mutableStateOf(false) }
+    val canConfirm = staging.matched.isNotEmpty() && name.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        modifier = Modifier.testTag(UiTestTags.M3uImportDialog),
+        title = { Text("Import playlist") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Playlist name") },
+                    singleLine = true,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .testTag(UiTestTags.M3uImportNameField),
+                )
+                Text(
+                    text = "Found ${staging.matched.size} of ${staging.matched.size + staging.unmatched.size} songs in your library.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (staging.unmatched.isNotEmpty()) {
+                    TextButton(
+                        onClick = { unmatchedExpanded = !unmatchedExpanded },
+                        modifier = Modifier.testTag(UiTestTags.M3uImportUnmatchedToggle),
+                    ) {
+                        Text(
+                            if (unmatchedExpanded) {
+                                "Hide unmatched"
+                            } else {
+                                "Show ${staging.unmatched.size} unmatched"
+                            },
+                        )
+                    }
+                    if (unmatchedExpanded) {
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                                    .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            staging.unmatched.forEach { entry ->
+                                val label =
+                                    when {
+                                        !entry.artist.isNullOrBlank() && !entry.title.isNullOrBlank() ->
+                                            "${entry.artist} — ${entry.title}"
+                                        !entry.title.isNullOrBlank() -> entry.title
+                                        else -> entry.rawPath.substringAfterLast('/').substringAfterLast('\\')
+                                    }
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Copy these MP3s to your phone and re-import to add them.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name) },
+                enabled = canConfirm,
+                modifier = Modifier.testTag(UiTestTags.M3uImportConfirm),
+            ) {
+                Text("Create Playlist")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onCancel,
+                modifier = Modifier.testTag(UiTestTags.M3uImportCancel),
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+/**
+ * Best-effort filename extraction from a content URI. SAF returns opaque content URIs whose
+ * `lastPathSegment` typically looks like `primary:Music/MyPlaylist.m3u` — we just take the
+ * last segment after `/`. Falls back to "Imported playlist" if anything is missing.
+ */
+private fun filenameFromUri(uri: Uri): String {
+    val raw = uri.lastPathSegment.orEmpty().substringAfterLast('/').substringAfterLast(':')
+    return raw.ifBlank { "Imported playlist" }
 }
 
 @Composable

@@ -22,3 +22,8 @@ ktlint_standard_function-naming = disabled
 # docs convention. Plus `UiTestTags` consts are camelCase by design — they're string
 # values that appear in Compose semantics, not Kotlin compile-time constants.
 ktlint_standard_property-naming = disabled
+
+# We organise files by responsibility (parser, matcher) rather than by sole class. The
+# default rule renames `M3uParser.kt` to `M3uEntry.kt` because the file's only class is the
+# data class `M3uEntry`, but the file's purpose is the `parseM3u` function.
+ktlint_standard_filename = disabled

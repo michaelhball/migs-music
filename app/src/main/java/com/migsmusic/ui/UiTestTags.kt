@@ -46,6 +46,13 @@ object UiTestTags {
     const val QueueSaveAsPlaylist = "queue_save_as_playlist"
 
     const val PlaylistFab = "playlist_fab"
+    const val PlaylistOverflow = "playlist_overflow"
+    const val PlaylistImportFromM3u = "playlist_import_m3u"
+    const val M3uImportDialog = "m3u_import_dialog"
+    const val M3uImportNameField = "m3u_import_name_field"
+    const val M3uImportConfirm = "m3u_import_confirm"
+    const val M3uImportCancel = "m3u_import_cancel"
+    const val M3uImportUnmatchedToggle = "m3u_import_unmatched_toggle"
     const val PlaylistRow = "playlist_row"
     const val PlaylistRenameButton = "playlist_rename"
     const val PlaylistDeleteButton = "playlist_delete"

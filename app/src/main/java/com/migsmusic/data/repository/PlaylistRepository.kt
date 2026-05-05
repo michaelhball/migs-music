@@ -85,6 +85,19 @@ class PlaylistRepository(
         )
     }
 
+    /**
+     * Creates a fresh playlist with [name] and adds [songIds] in order. Used by the M3U
+     * import flow. Returns the new playlist id.
+     */
+    suspend fun createPlaylistWithSongs(
+        name: String,
+        songIds: List<Long>,
+    ): Long {
+        val playlistId = createPlaylist(name)
+        songIds.forEach { addSong(playlistId, it) }
+        return playlistId
+    }
+
     private suspend fun normalizePlaylistPositions(playlistId: Long) {
         val normalized =
             playlistDao.getPlaylistSongEntities(playlistId)

@@ -62,6 +62,7 @@ fun MigsMusicApp(
                 ViewModelFactory {
                     PlaylistsViewModel(
                         playlistRepository = appContainer.playlistRepository,
+                        libraryRepository = appContainer.libraryRepository,
                         playbackManager = appContainer.playbackManager,
                     )
                 },
