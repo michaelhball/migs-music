@@ -1,0 +1,6 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.MigsMusic" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:statusBarColor" tools:targetApi="l">?android:colorBackground</item>
+        <item name="android:navigationBarColor">?android:colorBackground</item>
+    </style>
+</resources>

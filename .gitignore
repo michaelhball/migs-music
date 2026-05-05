@@ -1,0 +1,68 @@
+# Built output
+app/build/
+build/
+captures/
+out/
+release/
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# Kotlin
+.kotlin/
+*.kotlin_metadata
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+.navigation/
+
+# Local SDK location, pulls from local Mac filesystem
+local.properties
+
+# Android emulator / signing
+*.jks
+*.keystore
+keystore.properties
+
+# Android profiling
+proguard/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Claude Code per-session state
+.claude/
+CLAUDE.local.md
+
+# Workspace logs (smoke runs, baseline) — actual notes are kept; raw logs aren't.
+workspace/baseline.log
+workspace/smoke-run-*.log
+
+# Test reports
+app/test-results/
+test-results/
+reports/
+
+# Crash logs
+hs_err_pid*
+
+# NDK
+.cxx/
+
+# Generated build files within app
+app/release/
+app/debug/
+
+# Coverage
+coverage/
+jacoco.exec
