@@ -1,6 +1,7 @@
 package com.migsmusic.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
@@ -24,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.migsmusic.data.local.model.FolderSummary
@@ -33,6 +36,9 @@ internal fun FoldersRoute(
     libraryViewModel: LibraryViewModel,
     currentSongId: Long?,
     onOpenFolder: (FolderSummary) -> Unit,
+    onNavigateToFolder: (path: String) -> Unit,
+    onGoToAlbum: (album: String, artist: String) -> Unit,
+    onGoToArtist: (artist: String) -> Unit,
 ) {
     HierarchicalFolderView(
         parentPath = "",
@@ -42,6 +48,9 @@ internal fun FoldersRoute(
         currentSongId = currentSongId,
         onOpenFolder = onOpenFolder,
         onGoUp = null,
+        onNavigateToFolder = onNavigateToFolder,
+        onGoToAlbum = onGoToAlbum,
+        onGoToArtist = onGoToArtist,
         screenTag = UiTestTags.FoldersScreen,
     )
 }
@@ -54,6 +63,9 @@ internal fun FolderDetailRoute(
     currentSongId: Long?,
     onOpenFolder: (FolderSummary) -> Unit,
     onGoUp: () -> Unit,
+    onNavigateToFolder: (path: String) -> Unit,
+    onGoToAlbum: (album: String, artist: String) -> Unit,
+    onGoToArtist: (artist: String) -> Unit,
 ) {
     HierarchicalFolderView(
         parentPath = folderPath,
@@ -63,6 +75,9 @@ internal fun FolderDetailRoute(
         currentSongId = currentSongId,
         onOpenFolder = onOpenFolder,
         onGoUp = onGoUp,
+        onNavigateToFolder = onNavigateToFolder,
+        onGoToAlbum = onGoToAlbum,
+        onGoToArtist = onGoToArtist,
         screenTag = UiTestTags.FolderDetailScreen,
     )
 }
@@ -76,6 +91,9 @@ internal fun HierarchicalFolderView(
     currentSongId: Long?,
     onOpenFolder: (FolderSummary) -> Unit,
     onGoUp: (() -> Unit)?,
+    onNavigateToFolder: (path: String) -> Unit,
+    onGoToAlbum: (album: String, artist: String) -> Unit,
+    onGoToArtist: (artist: String) -> Unit,
     screenTag: String,
 ) {
     val subfolders by libraryViewModel.subfoldersOf(parentPath)
@@ -86,6 +104,7 @@ internal fun HierarchicalFolderView(
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
     val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
+    val snackbar = LocalSnackbarController.current
 
     LazyColumn(
         modifier =
@@ -110,9 +129,9 @@ internal fun HierarchicalFolderView(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Go up to parent folder")
                         }
                     }
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineSmall,
+                    FolderBreadcrumb(
+                        path = parentPath,
+                        onNavigateToFolder = onNavigateToFolder,
                         modifier = Modifier.padding(horizontal = 8.dp),
                     )
                 }
@@ -164,9 +183,23 @@ internal fun HierarchicalFolderView(
                     remember(index, directSongs) {
                         { libraryViewModel.playSongs(directSongs, index, shuffle = false) }
                     }
-                val onNext = remember(song.id) { { libraryViewModel.playNext(song.id) } }
-                val onLater = remember(song.id) { { libraryViewModel.playLater(song.id) } }
+                val onNext =
+                    remember(song.id) {
+                        {
+                            libraryViewModel.playNext(song.id)
+                            snackbar.show("Added to queue")
+                        }
+                    }
+                val onLater =
+                    remember(song.id) {
+                        {
+                            libraryViewModel.playLater(song.id)
+                            snackbar.show("Added to queue")
+                        }
+                    }
                 val onAdd = remember(song.id) { { openAddToPlaylist(song.id) } }
+                val onAlbum = remember(song.id) { { onGoToAlbum(song.album, song.artist) } }
+                val onArtist = remember(song.id) { { onGoToArtist(song.artist) } }
                 SongRow(
                     song = song,
                     isCurrent = song.id == currentSongId,
@@ -174,6 +207,8 @@ internal fun HierarchicalFolderView(
                     onPlayNext = onNext,
                     onPlayLater = onLater,
                     onAddToPlaylist = onAdd,
+                    onGoToAlbum = onAlbum,
+                    onGoToArtist = onArtist,
                 )
                 HorizontalDivider()
             }
@@ -184,6 +219,57 @@ internal fun HierarchicalFolderView(
                     text = "Empty folder",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Renders a tappable breadcrumb of the folder hierarchy: e.g. for `Music/Beatles/Hey Jude`,
+ * shows `Music ▸ Beatles ▸ Hey Jude`. Each segment except the last navigates to that ancestor.
+ * Horizontal scroll keeps deep paths from clipping.
+ */
+@Composable
+private fun FolderBreadcrumb(
+    path: String,
+    onNavigateToFolder: (path: String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val segments = remember(path) { path.split('/').filter { it.isNotEmpty() } }
+    if (segments.isEmpty()) return
+
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        segments.forEachIndexed { index, segment ->
+            val isLast = index == segments.lastIndex
+            // Reconstruct the full path for this ancestor — `Music`, `Music/Beatles`, etc.
+            val pathToHere = remember(path, index) { segments.take(index + 1).joinToString("/") }
+            Text(
+                text = segment,
+                style = MaterialTheme.typography.titleMedium,
+                color =
+                    if (isLast) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                fontWeight = if (isLast) FontWeight.SemiBold else null,
+                modifier =
+                    Modifier
+                        .testTag(UiTestTags.FolderBreadcrumbSegment)
+                        .let { base ->
+                            if (isLast) base else base.clickable { onNavigateToFolder(pathToHere) }
+                        }
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+            )
+            if (!isLast) {
+                Text(
+                    text = "▸",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

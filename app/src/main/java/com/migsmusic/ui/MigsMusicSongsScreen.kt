@@ -50,6 +50,8 @@ internal fun SongsRoute(
     currentSongId: Long?,
     onOpenAlbums: () -> Unit,
     onOpenArtists: () -> Unit,
+    onGoToAlbum: (album: String, artist: String) -> Unit,
+    onGoToArtist: (artist: String) -> Unit,
 ) {
     val songs by libraryViewModel.visibleSongs.collectAsStateWithLifecycle()
     val scanState by libraryViewModel.libraryScanState.collectAsStateWithLifecycle()
@@ -111,6 +113,9 @@ internal fun SongsRoute(
             Spacer(modifier = Modifier.weight(1f))
             SortMenu(
                 current = sortOrder,
+                options = SongSortOrder.entries,
+                labelOf = { it.label },
+                nameOf = { it.name },
                 onSelect = libraryViewModel::setSongSortOrder,
             )
         }
@@ -141,6 +146,8 @@ internal fun SongsRoute(
                     onPlayNext = { libraryViewModel.playNext(it) },
                     onPlayLater = { libraryViewModel.playLater(it) },
                     onAddToPlaylist = openAddToPlaylist,
+                    onGoToAlbum = onGoToAlbum,
+                    onGoToArtist = onGoToArtist,
                 )
         }
     }
@@ -154,6 +161,10 @@ internal fun SongList(
     onPlayNext: (Long) -> Unit,
     onPlayLater: (Long) -> Unit,
     onAddToPlaylist: (Long) -> Unit,
+    // Optional — pass null to hide the corresponding menu item on screens where navigating
+    // there is redundant (Album-detail hides "Go to album", Artist-detail hides "Go to artist").
+    onGoToAlbum: ((album: String, artist: String) -> Unit)? = null,
+    onGoToArtist: ((artist: String) -> Unit)? = null,
 ) {
     val lazyListState = rememberLazyListState()
     // Auto-scroll to the currently-playing song once on entry, so the highlight is visible
@@ -172,6 +183,7 @@ internal fun SongList(
         }
         didInitialScroll = true
     }
+    val snackbar = LocalSnackbarController.current
     LazyColumn(
         state = lazyListState,
         modifier =
@@ -184,9 +196,29 @@ internal fun SongList(
             // flipping) doesn't allocate four fresh closures per visible row + force every
             // SongRow to recompose from lambda inequality alone.
             val onPlay = remember(index) { { onPlaySong(index) } }
-            val onNext = remember(song.id) { { onPlayNext(song.id) } }
-            val onLater = remember(song.id) { { onPlayLater(song.id) } }
+            val onNext =
+                remember(song.id) {
+                    {
+                        onPlayNext(song.id)
+                        snackbar.show("Added to queue")
+                    }
+                }
+            val onLater =
+                remember(song.id) {
+                    {
+                        onPlayLater(song.id)
+                        snackbar.show("Added to queue")
+                    }
+                }
             val onAdd = remember(song.id) { { onAddToPlaylist(song.id) } }
+            val onAlbum =
+                remember(song.id, onGoToAlbum) {
+                    onGoToAlbum?.let { f -> { f(song.album, song.artist) } }
+                }
+            val onArtist =
+                remember(song.id, onGoToArtist) {
+                    onGoToArtist?.let { f -> { f(song.artist) } }
+                }
             SongRow(
                 song = song,
                 isCurrent = song.id == currentSongId,
@@ -194,6 +226,8 @@ internal fun SongList(
                 onPlayNext = onNext,
                 onPlayLater = onLater,
                 onAddToPlaylist = onAdd,
+                onGoToAlbum = onAlbum,
+                onGoToArtist = onArtist,
             )
             HorizontalDivider()
         }
@@ -209,6 +243,10 @@ internal fun SongRow(
     onPlayNext: () -> Unit,
     onPlayLater: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    // Optional — pass null on screens where navigating to that destination is redundant
+    // (e.g. AlbumDetailRoute hides "Go to album", ArtistDetailRoute hides "Go to artist").
+    onGoToAlbum: (() -> Unit)? = null,
+    onGoToArtist: (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
@@ -275,6 +313,26 @@ internal fun SongRow(
                     onAddToPlaylist()
                 },
             )
+            if (onGoToAlbum != null) {
+                DropdownMenuItem(
+                    modifier = Modifier.testTag(UiTestTags.SongActionGoToAlbum),
+                    text = { Text("Go to album") },
+                    onClick = {
+                        menuOpen = false
+                        onGoToAlbum()
+                    },
+                )
+            }
+            if (onGoToArtist != null) {
+                DropdownMenuItem(
+                    modifier = Modifier.testTag(UiTestTags.SongActionGoToArtist),
+                    text = { Text("Go to artist") },
+                    onClick = {
+                        menuOpen = false
+                        onGoToArtist()
+                    },
+                )
+            }
         }
     }
 }

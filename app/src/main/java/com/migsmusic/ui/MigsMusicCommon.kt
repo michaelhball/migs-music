@@ -162,9 +162,12 @@ internal fun AlbumArtImage(
 }
 
 @Composable
-internal fun SortMenu(
-    current: SongSortOrder,
-    onSelect: (SongSortOrder) -> Unit,
+internal fun <T> SortMenu(
+    current: T,
+    options: List<T>,
+    labelOf: (T) -> String,
+    nameOf: (T) -> String,
+    onSelect: (T) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -174,17 +177,17 @@ internal fun SortMenu(
         ) {
             Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
             Spacer(modifier = Modifier.width(4.dp))
-            Text(current.label, maxLines = 1)
+            Text(labelOf(current), maxLines = 1)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            SongSortOrder.values().forEach { order ->
+            options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(order.label) },
+                    text = { Text(labelOf(option)) },
                     onClick = {
-                        onSelect(order)
+                        onSelect(option)
                         open = false
                     },
-                    modifier = Modifier.testTag(UiTestTags.sortOption(order.name)),
+                    modifier = Modifier.testTag(UiTestTags.sortOption(nameOf(option))),
                 )
             }
         }

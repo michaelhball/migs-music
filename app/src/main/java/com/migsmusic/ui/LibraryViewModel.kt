@@ -36,6 +36,10 @@ class LibraryViewModel(
     private val scanState = MutableStateFlow(LibraryScanState())
     private val sortOrder = MutableStateFlow(preferences.songSortOrder)
     val songSortOrder: StateFlow<SongSortOrder> = sortOrder
+    private val albumSort = MutableStateFlow(preferences.albumSortOrder)
+    val albumSortOrder: StateFlow<AlbumSortOrder> = albumSort
+    private val artistSort = MutableStateFlow(preferences.artistSortOrder)
+    val artistSortOrder: StateFlow<ArtistSortOrder> = artistSort
 
     val folders: StateFlow<List<FolderSummary>> =
         libraryRepository.observeFolders()
@@ -60,11 +64,13 @@ class LibraryViewModel(
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val artists: StateFlow<List<ArtistSummary>> =
-        libraryRepository.observeArtists()
+        combine(libraryRepository.observeArtists(), artistSort) { list, order -> sortArtists(list, order) }
+            .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val albums: StateFlow<List<AlbumSummary>> =
-        libraryRepository.observeAlbums()
+        combine(libraryRepository.observeAlbums(), albumSort) { list, order -> sortAlbums(list, order) }
+            .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val libraryScanState: StateFlow<LibraryScanState> = scanState
@@ -99,6 +105,39 @@ class LibraryViewModel(
         sortOrder.value = order
         preferences.songSortOrder = order
     }
+
+    fun setAlbumSortOrder(order: AlbumSortOrder) {
+        albumSort.value = order
+        preferences.albumSortOrder = order
+    }
+
+    fun setArtistSortOrder(order: ArtistSortOrder) {
+        artistSort.value = order
+        preferences.artistSortOrder = order
+    }
+
+    private fun sortAlbums(
+        items: List<AlbumSummary>,
+        order: AlbumSortOrder,
+    ): List<AlbumSummary> =
+        when (order) {
+            AlbumSortOrder.TITLE_ASC -> items.sortedWith(compareBy({ it.title.lowercase() }, { it.artist.lowercase() }))
+            AlbumSortOrder.TITLE_DESC ->
+                items.sortedWith(compareByDescending<AlbumSummary> { it.title.lowercase() }.thenBy { it.artist.lowercase() })
+            AlbumSortOrder.ARTIST_ASC -> items.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
+            AlbumSortOrder.SONG_COUNT_DESC -> items.sortedWith(compareByDescending<AlbumSummary> { it.songCount }.thenBy { it.title.lowercase() })
+        }
+
+    private fun sortArtists(
+        items: List<ArtistSummary>,
+        order: ArtistSortOrder,
+    ): List<ArtistSummary> =
+        when (order) {
+            ArtistSortOrder.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+            ArtistSortOrder.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+            ArtistSortOrder.SONG_COUNT_DESC -> items.sortedWith(compareByDescending<ArtistSummary> { it.songCount }.thenBy { it.name.lowercase() })
+            ArtistSortOrder.ALBUM_COUNT_DESC -> items.sortedWith(compareByDescending<ArtistSummary> { it.albumCount }.thenBy { it.name.lowercase() })
+        }
 
     private fun sortSongs(
         songs: List<SongEntity>,
@@ -189,4 +228,18 @@ enum class SongSortOrder(val label: String) {
     DATE_ADDED_DESC("Recently added"),
     DURATION_ASC("Shortest first"),
     DURATION_DESC("Longest first"),
+}
+
+enum class AlbumSortOrder(val label: String) {
+    TITLE_ASC("Title A→Z"),
+    TITLE_DESC("Title Z→A"),
+    ARTIST_ASC("Artist A→Z"),
+    SONG_COUNT_DESC("Most songs"),
+}
+
+enum class ArtistSortOrder(val label: String) {
+    NAME_ASC("Name A→Z"),
+    NAME_DESC("Name Z→A"),
+    SONG_COUNT_DESC("Most songs"),
+    ALBUM_COUNT_DESC("Most albums"),
 }

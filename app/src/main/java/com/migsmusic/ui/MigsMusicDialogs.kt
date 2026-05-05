@@ -36,6 +36,7 @@ import com.migsmusic.data.local.model.PlaylistSummary
 internal fun rememberAddToPlaylistTrigger(playlistsViewModel: PlaylistsViewModel?): (Long) -> Unit {
     if (playlistsViewModel == null) return remember { { _: Long -> } }
     var pendingSongId by remember { mutableLongStateOf(-1L) }
+    val snackbar = LocalSnackbarController.current
     if (pendingSongId != -1L) {
         val playlists by playlistsViewModel.playlists.collectAsStateWithLifecycle()
         AddToPlaylistDialog(
@@ -44,10 +45,13 @@ internal fun rememberAddToPlaylistTrigger(playlistsViewModel: PlaylistsViewModel
             onCreatePlaylist = { name ->
                 playlistsViewModel.createPlaylistAndAddSong(name, pendingSongId)
                 pendingSongId = -1L
+                snackbar.show("Added to “$name”")
             },
             onAddToPlaylist = { playlistId ->
                 playlistsViewModel.addSong(playlistId, pendingSongId)
                 pendingSongId = -1L
+                val name = playlists.firstOrNull { it.id == playlistId }?.name ?: "playlist"
+                snackbar.show("Added to “$name”")
             },
         )
     }

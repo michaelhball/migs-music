@@ -31,23 +31,38 @@ internal fun AlbumsRoute(
     onOpenAlbum: (AlbumSummary) -> Unit,
 ) {
     val albums by libraryViewModel.albums.collectAsStateWithLifecycle()
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        itemsIndexed(albums, key = { _, item -> item.key }) { _, album ->
-            ListRow(
-                title = album.title,
-                subtitle = "${album.artist} • ${album.songCount} songs",
-                modifier = Modifier.clickable { onOpenAlbum(album) },
-                leading = {
-                    AlbumArtImage(
-                        uri = album.albumArtUri,
-                        modifier =
-                            Modifier
-                                .size(48.dp)
-                                .clip(MaterialTheme.shapes.small),
-                    )
-                },
+    val sortOrder by libraryViewModel.albumSortOrder.collectAsStateWithLifecycle()
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            SortMenu(
+                current = sortOrder,
+                options = AlbumSortOrder.entries,
+                labelOf = { it.label },
+                nameOf = { it.name },
+                onSelect = libraryViewModel::setAlbumSortOrder,
             )
-            HorizontalDivider()
+        }
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            itemsIndexed(albums, key = { _, item -> item.key }) { _, album ->
+                ListRow(
+                    title = album.title,
+                    subtitle = "${album.artist} • ${album.songCount} songs",
+                    modifier = Modifier.clickable { onOpenAlbum(album) },
+                    leading = {
+                        AlbumArtImage(
+                            uri = album.albumArtUri,
+                            modifier =
+                                Modifier
+                                    .size(48.dp)
+                                    .clip(MaterialTheme.shapes.small),
+                        )
+                    },
+                )
+                HorizontalDivider()
+            }
         }
     }
 }
@@ -58,6 +73,7 @@ internal fun AlbumDetailRoute(
     libraryViewModel: LibraryViewModel,
     playlistsViewModel: PlaylistsViewModel,
     currentSongId: Long?,
+    onGoToArtist: (artist: String) -> Unit,
 ) {
     val songs by libraryViewModel.songsByAlbum(albumKey).collectAsStateWithLifecycle(initialValue = emptyList())
     val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
@@ -94,6 +110,9 @@ internal fun AlbumDetailRoute(
             onPlayNext = { libraryViewModel.playNext(it) },
             onPlayLater = { libraryViewModel.playLater(it) },
             onAddToPlaylist = openAddToPlaylist,
+            // We're already on the album detail screen — only "Go to artist" is meaningful here.
+            onGoToAlbum = null,
+            onGoToArtist = onGoToArtist,
         )
     }
 }
@@ -104,14 +123,29 @@ internal fun ArtistsRoute(
     onOpenArtist: (ArtistSummary) -> Unit,
 ) {
     val artists by libraryViewModel.artists.collectAsStateWithLifecycle()
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        itemsIndexed(artists, key = { _, item -> item.name }) { _, artist ->
-            ListRow(
-                title = artist.name,
-                subtitle = "${artist.albumCount} albums • ${artist.songCount} songs",
-                modifier = Modifier.clickable { onOpenArtist(artist) },
+    val sortOrder by libraryViewModel.artistSortOrder.collectAsStateWithLifecycle()
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            SortMenu(
+                current = sortOrder,
+                options = ArtistSortOrder.entries,
+                labelOf = { it.label },
+                nameOf = { it.name },
+                onSelect = libraryViewModel::setArtistSortOrder,
             )
-            HorizontalDivider()
+        }
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            itemsIndexed(artists, key = { _, item -> item.name }) { _, artist ->
+                ListRow(
+                    title = artist.name,
+                    subtitle = "${artist.albumCount} albums • ${artist.songCount} songs",
+                    modifier = Modifier.clickable { onOpenArtist(artist) },
+                )
+                HorizontalDivider()
+            }
         }
     }
 }
@@ -122,6 +156,7 @@ internal fun ArtistDetailRoute(
     libraryViewModel: LibraryViewModel,
     playlistsViewModel: PlaylistsViewModel,
     currentSongId: Long?,
+    onGoToAlbum: (album: String, artist: String) -> Unit,
 ) {
     val songs by libraryViewModel.songsByArtist(artist).collectAsStateWithLifecycle(initialValue = emptyList())
     val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
@@ -154,6 +189,9 @@ internal fun ArtistDetailRoute(
             onPlayNext = { libraryViewModel.playNext(it) },
             onPlayLater = { libraryViewModel.playLater(it) },
             onAddToPlaylist = openAddToPlaylist,
+            // We're already on the artist detail screen — only "Go to album" is meaningful here.
+            onGoToAlbum = onGoToAlbum,
+            onGoToArtist = null,
         )
     }
 }

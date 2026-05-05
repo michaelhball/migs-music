@@ -2,6 +2,8 @@ package com.migsmusic.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,8 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +57,7 @@ import kotlinx.coroutines.flow.StateFlow
 @Composable
 internal fun PlayerRoute(
     playerViewModel: PlayerViewModel,
+    playlistsViewModel: PlaylistsViewModel,
     onOpenQueue: () -> Unit,
     onDismiss: () -> Unit,
     onOpenArtist: (String) -> Unit,
@@ -61,6 +66,10 @@ internal fun PlayerRoute(
     val state by playerViewModel.playbackUiState.collectAsStateWithLifecycle()
     val currentPositionMs by playerViewModel.currentPositionMs.collectAsStateWithLifecycle()
     val currentSong = state.currentSong
+    val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
+    val snackbar = LocalSnackbarController.current
+    var saveQueueDialogOpen by remember { mutableStateOf(false) }
+    var contextMenuOpen by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember(state.currentSong?.entryId) { mutableFloatStateOf(0f) }
     // While the user is dragging the slider, show their finger position; otherwise track the
@@ -77,6 +86,25 @@ internal fun PlayerRoute(
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var dragCommitted by remember { mutableStateOf(false) }
+
+    if (saveQueueDialogOpen) {
+        NameDialog(
+            title = "Save queue as playlist",
+            initialValue = "",
+            onDismiss = { saveQueueDialogOpen = false },
+            onConfirm = { name ->
+                val ids =
+                    buildList {
+                        addAll(state.history.map { it.songId })
+                        state.currentSong?.let { add(it.songId) }
+                        addAll(state.upcoming.map { it.songId })
+                    }
+                playlistsViewModel.createPlaylistFromSongs(name, ids)
+                saveQueueDialogOpen = false
+                snackbar.show("Saved as “$name”")
+            },
+        )
+    }
 
     Box(
         modifier =
@@ -122,9 +150,56 @@ internal fun PlayerRoute(
                         },
                     )
                 }
+                // Separate pointerInput for tap detection — long-press opens the context menu.
+                // Two pointerInputs coexist via Compose's pointer event dispatch.
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = { contextMenuOpen = true },
+                    )
+                }
                 .padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
+        DropdownMenu(
+            expanded = contextMenuOpen,
+            onDismissRequest = { contextMenuOpen = false },
+            modifier = Modifier.testTag(UiTestTags.PlayerContextMenu),
+        ) {
+            DropdownMenuItem(
+                text = { Text("Save queue as playlist") },
+                onClick = {
+                    contextMenuOpen = false
+                    saveQueueDialogOpen = true
+                },
+                modifier = Modifier.testTag(UiTestTags.PlayerActionSaveQueueAsPlaylist),
+            )
+            currentSong?.let { song ->
+                DropdownMenuItem(
+                    text = { Text("Add to playlist…") },
+                    onClick = {
+                        contextMenuOpen = false
+                        openAddToPlaylist(song.songId)
+                    },
+                    modifier = Modifier.testTag(UiTestTags.PlayerActionAddToPlaylist),
+                )
+                DropdownMenuItem(
+                    text = { Text("Go to album") },
+                    onClick = {
+                        contextMenuOpen = false
+                        onOpenAlbum(song.album, song.artist)
+                    },
+                    modifier = Modifier.testTag(UiTestTags.PlayerActionGoToAlbum),
+                )
+                DropdownMenuItem(
+                    text = { Text("Go to artist") },
+                    onClick = {
+                        contextMenuOpen = false
+                        onOpenArtist(song.artist)
+                    },
+                    modifier = Modifier.testTag(UiTestTags.PlayerActionGoToArtist),
+                )
+            }
+        }
         if (currentSong == null) {
             Text(
                 text = "Nothing is playing yet.",
@@ -282,13 +357,48 @@ internal fun MiniPlayer(
     onOpenPlayer: () -> Unit,
 ) {
     val current = playbackState.currentSong ?: return
+    // Mirror the full player's horizontal swipe-to-skip. Same 80dp threshold; once crossed,
+    // commit the skip and ignore further drag deltas until the gesture ends.
+    val skipThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    var dragCommitted by remember { mutableStateOf(false) }
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .testTag(UiTestTags.MiniPlayer)
-                .clickable(onClick = onOpenPlayer),
+                .clickable(onClick = onOpenPlayer)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragX = 0f
+                            dragCommitted = false
+                        },
+                        onDragEnd = {
+                            dragX = 0f
+                            dragCommitted = false
+                        },
+                        onDragCancel = {
+                            dragX = 0f
+                            dragCommitted = false
+                        },
+                        onHorizontalDrag = { _, delta ->
+                            if (dragCommitted) return@detectHorizontalDragGestures
+                            dragX += delta
+                            when {
+                                dragX <= -skipThresholdPx -> {
+                                    onSkipNext()
+                                    dragCommitted = true
+                                }
+                                dragX >= skipThresholdPx -> {
+                                    onSkipPrevious()
+                                    dragCommitted = true
+                                }
+                            }
+                        },
+                    )
+                },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         // Thin progress indicator at the top — observes the position flow in isolation so

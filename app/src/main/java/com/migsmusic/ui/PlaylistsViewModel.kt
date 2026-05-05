@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -36,19 +37,61 @@ data class M3uImportStaging(
     val unmatched: List<M3uEntry>,
 )
 
+enum class PlaylistSortOrder(val label: String) {
+    NAME_ASC("Name A→Z"),
+    NAME_DESC("Name Z→A"),
+    SONG_COUNT_DESC("Most songs"),
+}
+
+/**
+ * Sort options that apply *within* a playlist. [DEFAULT] preserves the canonical position
+ * order (i.e. the order songs were imported from M3U or added manually). All other options
+ * are display-only — they don't mutate the underlying `position` field — so picking [DEFAULT]
+ * always restores the original order. Drag-to-reorder is hidden when sort != [DEFAULT].
+ */
+enum class PlaylistContentSortOrder(val label: String) {
+    DEFAULT("Default order"),
+    TITLE_ASC("Title A→Z"),
+    TITLE_DESC("Title Z→A"),
+    ARTIST_ASC("Artist A→Z"),
+    DURATION_ASC("Shortest first"),
+    DURATION_DESC("Longest first"),
+}
+
 class PlaylistsViewModel(
     private val playlistRepository: PlaylistRepository,
     private val libraryRepository: LibraryRepository,
     private val playbackManager: PlaybackManager,
     private val preferences: AppPreferences,
 ) : ViewModel() {
+    private val playlistSort = MutableStateFlow(preferences.playlistSortOrder)
+    val playlistSortOrder: StateFlow<PlaylistSortOrder> = playlistSort.asStateFlow()
+
     // Lazily: starts on first subscribe, then keeps the value cached for the VM's lifetime.
     // Using WhileSubscribed restarted from `emptyList` on every Playlists-tab navigation, which
     // intermittently raced with Room's invalidation-tracker debounce and made `openReorderRemoveDelete`
     // flaky. The cost of keeping ~tens of PlaylistSummary rows in memory is negligible.
     val playlists: StateFlow<List<PlaylistSummary>> =
-        playlistRepository.observePlaylists()
+        combine(playlistRepository.observePlaylists(), playlistSort) { list, order ->
+            sortPlaylists(list, order)
+        }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    fun setPlaylistSortOrder(order: PlaylistSortOrder) {
+        playlistSort.value = order
+        preferences.playlistSortOrder = order
+    }
+
+    private fun sortPlaylists(
+        items: List<PlaylistSummary>,
+        order: PlaylistSortOrder,
+    ): List<PlaylistSummary> =
+        when (order) {
+            PlaylistSortOrder.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+            PlaylistSortOrder.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+            PlaylistSortOrder.SONG_COUNT_DESC ->
+                items.sortedWith(compareByDescending<PlaylistSummary> { it.songCount }.thenBy { it.name.lowercase() })
+        }
 
     fun playlistSongs(playlistId: Long): StateFlow<List<PlaylistSong>> =
         playlistRepository.observePlaylistSongs(playlistId)

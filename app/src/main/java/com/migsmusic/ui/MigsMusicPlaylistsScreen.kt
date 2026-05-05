@@ -66,6 +66,7 @@ internal fun PlaylistsRoute(
     val importStaging by playlistsViewModel.importStaging.collectAsStateWithLifecycle()
     val musicFolderUri by playlistsViewModel.musicFolderUri.collectAsStateWithLifecycle()
     val availableM3uFiles by playlistsViewModel.availableM3uFiles.collectAsStateWithLifecycle()
+    val playlistSortOrder by playlistsViewModel.playlistSortOrder.collectAsStateWithLifecycle()
     var showDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableLongStateOf(-1L) }
     var overflowOpen by remember { mutableStateOf(false) }
@@ -154,16 +155,24 @@ internal fun PlaylistsRoute(
                     .padding(innerPadding)
                     .testTag(UiTestTags.PlaylistsScreen),
         ) {
-            // Overflow ⋮ in the screen header — host for "Import from M3U file". Only the
-            // import action lives here for now; "New playlist" remains the FAB so the
-            // primary action stays one tap away.
+            // Sort menu + overflow ⋮ in the screen header. "New playlist" remains the FAB so
+            // the primary action stays one tap away; the overflow only hosts the M3U import
+            // entry. Sort sits next to the overflow on the right.
             Row(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .padding(end = 8.dp),
                 horizontalArrangement = Arrangement.End,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
+                SortMenu(
+                    current = playlistSortOrder,
+                    options = PlaylistSortOrder.entries,
+                    labelOf = { it.label },
+                    nameOf = { it.name },
+                    onSelect = playlistsViewModel::setPlaylistSortOrder,
+                )
                 Box {
                     IconButton(
                         onClick = { overflowOpen = true },
@@ -447,9 +456,27 @@ internal fun PlaylistDetailRoute(
     // playlistSongs() creates a new StateFlow each call; remember by id so we don't
     // spin a recomposition loop (the new flow re-emits emptyList -> recompose -> new flow ...).
     val songsFlow = remember(playlistId) { playlistsViewModel.playlistSongs(playlistId) }
-    val songs by songsFlow.collectAsStateWithLifecycle()
+    val songsRaw by songsFlow.collectAsStateWithLifecycle()
     val playlists by playlistsViewModel.playlists.collectAsStateWithLifecycle()
+    val snackbar = LocalSnackbarController.current
     var renameDialogVisible by remember { mutableStateOf(false) }
+    // Display-only sort. DEFAULT preserves position order (the M3U import order, or the
+    // order songs were added). Other options only change what's rendered — they don't mutate
+    // playlist_songs.position, so picking DEFAULT always restores the canonical order.
+    var contentSort by remember(playlistId) { mutableStateOf(PlaylistContentSortOrder.DEFAULT) }
+    val songs =
+        remember(songsRaw, contentSort) {
+            when (contentSort) {
+                PlaylistContentSortOrder.DEFAULT -> songsRaw
+                PlaylistContentSortOrder.TITLE_ASC -> songsRaw.sortedBy { it.title.lowercase() }
+                PlaylistContentSortOrder.TITLE_DESC -> songsRaw.sortedByDescending { it.title.lowercase() }
+                PlaylistContentSortOrder.ARTIST_ASC ->
+                    songsRaw.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
+                PlaylistContentSortOrder.DURATION_ASC -> songsRaw.sortedBy { it.durationMs }
+                PlaylistContentSortOrder.DURATION_DESC -> songsRaw.sortedByDescending { it.durationMs }
+            }
+        }
+    val canReorder = contentSort == PlaylistContentSortOrder.DEFAULT
 
     if (renameDialogVisible) {
         NameDialog(
@@ -470,6 +497,7 @@ internal fun PlaylistDetailRoute(
                     .fillMaxWidth()
                     .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Button(
                 onClick = { renameDialogVisible = true },
@@ -491,6 +519,14 @@ internal fun PlaylistDetailRoute(
             ) {
                 Text("Shuffle Playlist")
             }
+            Spacer(Modifier.weight(1f))
+            SortMenu(
+                current = contentSort,
+                options = PlaylistContentSortOrder.entries,
+                labelOf = { it.label },
+                nameOf = { it.name },
+                onSelect = { contentSort = it },
+            )
         }
         if (songs.isNotEmpty()) {
             Text(
@@ -523,11 +559,17 @@ internal fun PlaylistDetailRoute(
                     }
                 val onNext =
                     remember(song.songId) {
-                        { playlistsViewModel.addSongToQueueNext(song.songId) }
+                        {
+                            playlistsViewModel.addSongToQueueNext(song.songId)
+                            snackbar.show("Added to queue")
+                        }
                     }
                 val onLater =
                     remember(song.songId) {
-                        { playlistsViewModel.addSongToQueueLater(song.songId) }
+                        {
+                            playlistsViewModel.addSongToQueueLater(song.songId)
+                            snackbar.show("Added to queue")
+                        }
                     }
                 val onMoveUp =
                     remember(index, playlistId) {
@@ -547,9 +589,11 @@ internal fun PlaylistDetailRoute(
                         onPlayLater = onLater,
                         onMoveUp = onMoveUp,
                         onMoveDown = onMoveDown,
-                        canMoveUp = index > 0,
-                        canMoveDown = index < songs.lastIndex,
-                        dragHandleModifier = Modifier.draggableHandle(),
+                        // Reorder controls only appear in default order — sorting by another
+                        // criterion would make manual reorder visually confusing.
+                        canMoveUp = canReorder && index > 0,
+                        canMoveDown = canReorder && index < songs.lastIndex,
+                        dragHandleModifier = if (canReorder) Modifier.draggableHandle() else null,
                     )
                 }
                 HorizontalDivider()
