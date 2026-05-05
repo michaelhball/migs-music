@@ -16,6 +16,16 @@ Implemented:
 - playlist/folder/album/artist playback in visible order or shuffled order
 - session restore after restart
 
+## Setup (one-time per checkout)
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This installs a pre-commit hook that runs `./gradlew ktlintCheck` against any commit
+that touches Kotlin files. CI runs the same check; the hook just catches issues earlier.
+Bypass with `git commit --no-verify` if absolutely necessary.
+
 ## Build
 
 Verified locally with:

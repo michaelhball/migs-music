@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Pre-commit hook: runs ktlint over the project before allowing the commit.
+#
+# Setup (one-time per checkout):
+#   git config core.hooksPath .githooks
+# After that, this script runs automatically on every `git commit`.
+#
+# To bypass in a genuine emergency:  git commit --no-verify
+# (Don't make a habit of it — CI runs the same check and will fail the push.)
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Skip entirely if no Kotlin files are staged — saves ~5–10s on docs-only commits.
+staged_kt=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(kt|kts)$' || true)
+if [[ -z "${staged_kt}" ]]; then
+    exit 0
+fi
+
+echo "→ Running ktlintCheck (pre-commit)…"
+if ! ./gradlew --quiet --console=plain ktlintCheck; then
+    echo
+    echo "✗ ktlint failed. Try './gradlew ktlintFormat' to auto-fix what it can." >&2
+    echo "  Then re-stage and commit." >&2
+    exit 1
+fi
+echo "✓ ktlint clean"
