@@ -1,10 +1,11 @@
 package com.migsmusic.playback
 
-import android.content.Intent
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
-import androidx.core.net.toUri
+import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -12,7 +13,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import android.util.Log
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.migsmusic.AppPreferences
@@ -21,19 +21,15 @@ import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaybackSessionRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -45,16 +41,18 @@ class PlaybackManager(
 ) {
     private val applicationContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val player = ExoPlayer.Builder(applicationContext)
-        .setHandleAudioBecomingNoisy(true)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            /* handleAudioFocus = */ true,
-        )
-        .build()
+    private val player =
+        ExoPlayer.Builder(applicationContext)
+            .setHandleAudioBecomingNoisy(true)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                // handleAudioFocus =
+                true,
+            )
+            .build()
     private val queueEngine = QueueEngine()
     private var mediaSession: MediaSession? = null
 
@@ -92,10 +90,11 @@ class PlaybackManager(
      * Tracks consecutive `onPlayerError` events so a queue full of unplayable items doesn't
      * spin through every entry in milliseconds. Reset on successful media transition.
      */
-    private val errorTracker = ConsecutiveErrorTracker(
-        burstWindowMs = ERROR_BURST_WINDOW_MS,
-        maxConsecutive = MAX_CONSECUTIVE_ERRORS,
-    )
+    private val errorTracker =
+        ConsecutiveErrorTracker(
+            burstWindowMs = ERROR_BURST_WINDOW_MS,
+            maxConsecutive = MAX_CONSECUTIVE_ERRORS,
+        )
 
     /**
      * Tracks which queue entry's artwork we've already embedded into the live MediaItem.
@@ -121,7 +120,10 @@ class PlaybackManager(
     init {
         player.addListener(
             object : Player.Listener {
-                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                override fun onMediaItemTransition(
+                    mediaItem: MediaItem?,
+                    reason: Int,
+                ) {
                     // A successful transition means whatever the previous item was, the player
                     // either played or was deliberately moved past it — clear the error counter.
                     errorTracker.reset()
@@ -177,7 +179,7 @@ class PlaybackManager(
                         scope.launch { publishUiState() }
                     }
                 }
-            }
+            },
         )
 
         scope.launch {
@@ -231,18 +233,23 @@ class PlaybackManager(
         mediaSession = null
     }
 
-    fun playContext(songIds: List<Long>, startIndex: Int, shuffle: Boolean = false) {
+    fun playContext(
+        songIds: List<Long>,
+        startIndex: Int,
+        shuffle: Boolean = false,
+    ) {
         // Honor the persisted shuffle preference: if the user has shuffle ON, every new
         // context shuffles, even when the caller didn't explicitly ask. The explicit `shuffle`
         // arg still wins for "Shuffle Playlist" / "Shuffle Folder" buttons.
         val effectiveShuffle = shuffle || _shuffleEnabled.value
         scope.launch {
             ensureServiceStarted()
-            val queueState = queueEngine.startContext(
-                songIds = songIds,
-                startIndex = startIndex,
-                shuffle = effectiveShuffle,
-            ) ?: return@launch
+            val queueState =
+                queueEngine.startContext(
+                    songIds = songIds,
+                    startIndex = startIndex,
+                    shuffle = effectiveShuffle,
+                ) ?: return@launch
             syncPlayer(queueState = queueState, startPositionMs = 0L, playWhenReady = true)
         }
     }
@@ -251,11 +258,12 @@ class PlaybackManager(
         scope.launch {
             ensureServiceStarted()
             val currentState = queueEngine.currentState()
-            val updatedState = if (currentState == null) {
-                queueEngine.startContext(listOf(songId), 0)
-            } else {
-                queueEngine.addNext(listOf(songId))
-            } ?: return@launch
+            val updatedState =
+                if (currentState == null) {
+                    queueEngine.startContext(listOf(songId), 0)
+                } else {
+                    queueEngine.addNext(listOf(songId))
+                } ?: return@launch
 
             syncPlayer(
                 queueState = updatedState,
@@ -269,11 +277,12 @@ class PlaybackManager(
         scope.launch {
             ensureServiceStarted()
             val currentState = queueEngine.currentState()
-            val updatedState = if (currentState == null) {
-                queueEngine.startContext(listOf(songId), 0)
-            } else {
-                queueEngine.addLater(listOf(songId))
-            } ?: return@launch
+            val updatedState =
+                if (currentState == null) {
+                    queueEngine.startContext(listOf(songId), 0)
+                } else {
+                    queueEngine.addLater(listOf(songId))
+                } ?: return@launch
 
             syncPlayer(
                 queueState = updatedState,
@@ -294,7 +303,10 @@ class PlaybackManager(
         }
     }
 
-    fun moveUpcoming(entryId: String, newIndex: Int) {
+    fun moveUpcoming(
+        entryId: String,
+        newIndex: Int,
+    ) {
         scope.launch {
             val updated = queueEngine.moveUpcoming(entryId, newIndex) ?: return@launch
             syncPlayer(
@@ -366,11 +378,12 @@ class PlaybackManager(
     }
 
     fun cycleRepeatMode() {
-        player.repeatMode = when (player.repeatMode) {
-            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_OFF
-        }
+        player.repeatMode =
+            when (player.repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
+            }
     }
 
     /**
@@ -409,30 +422,31 @@ class PlaybackManager(
      * counters, and zeroes the persisted snapshot so a subsequent cold-start doesn't restore
      * stale state from a previous test.
      */
-    suspend fun resetForTest() = withContext(Dispatchers.Main.immediate) {
-        player.pause()
-        player.playWhenReady = false
-        player.stop()
-        player.clearMediaItems()
-        player.repeatMode = Player.REPEAT_MODE_OFF
-        queueEngine.clear()
-        queueSongCache = emptyMap()
-        lastArtworkEntryId = null
-        errorTracker.reset()
-        _shuffleEnabled.value = false
-        preferences.shuffleEnabled = false
-        _isPlayerPlaying.value = false
-        _uiState.value = PlaybackUiState()
-        _currentPositionMs.value = 0L
-        _currentSongId.value = null
-        // Release the MediaSession + stop the foreground service so the next test starts from a
-        // truly clean slate. Without this, leftover session/service state from the previous test
-        // (e.g. one created via playContext) survives and intermittently blocks Compose idle.
-        clearMediaSession()
-        applicationContext.stopService(Intent(applicationContext, MediaPlaybackService::class.java))
-        // Stays inside Main.immediate so writeSnapshotNow's player.currentPosition read is safe.
-        writeSnapshotNow()
-    }
+    suspend fun resetForTest() =
+        withContext(Dispatchers.Main.immediate) {
+            player.pause()
+            player.playWhenReady = false
+            player.stop()
+            player.clearMediaItems()
+            player.repeatMode = Player.REPEAT_MODE_OFF
+            queueEngine.clear()
+            queueSongCache = emptyMap()
+            lastArtworkEntryId = null
+            errorTracker.reset()
+            _shuffleEnabled.value = false
+            preferences.shuffleEnabled = false
+            _isPlayerPlaying.value = false
+            _uiState.value = PlaybackUiState()
+            _currentPositionMs.value = 0L
+            _currentSongId.value = null
+            // Release the MediaSession + stop the foreground service so the next test starts from a
+            // truly clean slate. Without this, leftover session/service state from the previous test
+            // (e.g. one created via playContext) survives and intermittently blocks Compose idle.
+            clearMediaSession()
+            applicationContext.stopService(Intent(applicationContext, MediaPlaybackService::class.java))
+            // Stays inside Main.immediate so writeSnapshotNow's player.currentPosition read is safe.
+            writeSnapshotNow()
+        }
 
     /**
      * Called when the user swipes the app away from Recents. Stops playback so audio
@@ -458,14 +472,19 @@ class PlaybackManager(
 
     private companion object {
         const val TAG = "PlaybackManager"
+
         /** How often the live position flow ticks while playing. */
         const val POSITION_TICK_MS = 500L
+
         /** Persist snapshot every N position ticks (≈ once per 10s of playback). */
         const val PERSIST_EVERY_N_TICKS = 20
+
         /** If we're past this point in the current song, "skip previous" rewinds to 0 instead of jumping to the previous track. */
         const val SKIP_PREV_REWIND_THRESHOLD_MS = 3_000L
+
         /** Window during which repeated `onPlayerError` events count as one burst. */
         const val ERROR_BURST_WINDOW_MS = 1_000L
+
         /** Stop auto-advancing once we hit this many errors inside one burst window. */
         const val MAX_CONSECUTIVE_ERRORS = 3
     }
@@ -518,14 +537,16 @@ class PlaybackManager(
         // construction + an internal ExoPlayer prepare cascade.
         val appliedIncremental = tryIncrementalSync(sanitizedQueue, songsById)
         if (!appliedIncremental) {
-            val mediaItems = effectiveQueue.mapNotNull { entry ->
-                val song = songsById[entry.songId] ?: return@mapNotNull null
-                buildMediaItem(entry = entry, song = song)
-            }
+            val mediaItems =
+                effectiveQueue.mapNotNull { entry ->
+                    val song = songsById[entry.songId] ?: return@mapNotNull null
+                    buildMediaItem(entry = entry, song = song)
+                }
             if (mediaItems.isEmpty()) return
 
-            val currentIndex = effectiveQueue.indexOfFirst { it.entryId == sanitizedQueue.currentItem.entryId }
-                .coerceAtLeast(0)
+            val currentIndex =
+                effectiveQueue.indexOfFirst { it.entryId == sanitizedQueue.currentItem.entryId }
+                    .coerceAtLeast(0)
             withContext(Dispatchers.Main.immediate) {
                 player.setMediaItems(mediaItems, currentIndex, startPositionMs)
                 player.prepare()
@@ -553,11 +574,12 @@ class PlaybackManager(
     ): Boolean {
         val newQueue = newQueueState.effectiveQueue
         val newIds = newQueue.map { it.entryId }
-        val playerSnapshot: List<String> = withContext(Dispatchers.Main.immediate) {
-            val n = player.mediaItemCount
-            if (n == 0) return@withContext emptyList()
-            (0 until n).map { i -> player.getMediaItemAt(i).mediaId }
-        }
+        val playerSnapshot: List<String> =
+            withContext(Dispatchers.Main.immediate) {
+                val n = player.mediaItemCount
+                if (n == 0) return@withContext emptyList()
+                (0 until n).map { i -> player.getMediaItemAt(i).mediaId }
+            }
         if (playerSnapshot.isEmpty()) return false
         if (playerSnapshot == newIds) return true
 
@@ -565,9 +587,10 @@ class PlaybackManager(
 
         // Single insertion: newIds is playerSnapshot with one extra entry inserted at index `at`.
         if (newIds.size == playerSnapshot.size + 1) {
-            val at = (newIds.indices).firstOrNull { i ->
-                i >= playerSnapshot.size || playerSnapshot[i] != newIds[i]
-            } ?: return false
+            val at =
+                (newIds.indices).firstOrNull { i ->
+                    i >= playerSnapshot.size || playerSnapshot[i] != newIds[i]
+                } ?: return false
             if (newIds.drop(at + 1) != playerSnapshot.drop(at)) return false
             // Don't insert at the current index — would shift the currently-playing item.
             if (at <= currentMediaIndex) return false
@@ -582,9 +605,10 @@ class PlaybackManager(
 
         // Single removal: playerSnapshot is newIds with one extra entry at index `at`.
         if (newIds.size == playerSnapshot.size - 1) {
-            val at = (playerSnapshot.indices).firstOrNull { i ->
-                i >= newIds.size || playerSnapshot[i] != newIds[i]
-            } ?: return false
+            val at =
+                (playerSnapshot.indices).firstOrNull { i ->
+                    i >= newIds.size || playerSnapshot[i] != newIds[i]
+                } ?: return false
             if (playerSnapshot.drop(at + 1) != newIds.drop(at)) return false
             // Removing the currently-playing item requires the full prepare cascade.
             if (at == currentMediaIndex) return false
@@ -600,10 +624,11 @@ class PlaybackManager(
             val movedEntryId = playerSnapshot[firstDiff]
             val newPos = newIds.indexOf(movedEntryId)
             if (newPos == -1) return false
-            val rebuilt = playerSnapshot.toMutableList().apply {
-                removeAt(firstDiff)
-                add(newPos, movedEntryId)
-            }
+            val rebuilt =
+                playerSnapshot.toMutableList().apply {
+                    removeAt(firstDiff)
+                    add(newPos, movedEntryId)
+                }
             if (rebuilt != newIds) return false
             if (firstDiff == currentMediaIndex || newPos == currentMediaIndex) return false
             withContext(Dispatchers.Main.immediate) {
@@ -622,13 +647,14 @@ class PlaybackManager(
         // entries). Avoids 2 Room round-trips on every play/pause / item transition.
         val songIds = rawQueueState?.effectiveQueue?.map { it.songId } ?: emptyList()
         val cacheCovers = songIds.all { queueSongCache.containsKey(it) }
-        val songsById = if (cacheCovers && songIds.isNotEmpty()) {
-            queueSongCache
-        } else if (rawQueueState != null) {
-            loadSongsById(songIds).also { queueSongCache = it }
-        } else {
-            emptyMap()
-        }
+        val songsById =
+            if (cacheCovers && songIds.isNotEmpty()) {
+                queueSongCache
+            } else if (rawQueueState != null) {
+                loadSongsById(songIds).also { queueSongCache = it }
+            } else {
+                emptyMap()
+            }
         val queueState = rawQueueState?.sanitize(songsById.keys)
         if (queueState == null) {
             if (rawQueueState != null) {
@@ -645,21 +671,24 @@ class PlaybackManager(
         }
 
         val current = songsById[queueState.currentItem.songId]
-        val upcoming = queueState.upcoming.mapNotNull { entry ->
-            songsById[entry.songId]?.toUiSong(entry)
-        }
-        val history = queueState.history.mapNotNull { entry ->
-            songsById[entry.songId]?.toUiSong(entry)
-        }
+        val upcoming =
+            queueState.upcoming.mapNotNull { entry ->
+                songsById[entry.songId]?.toUiSong(entry)
+            }
+        val history =
+            queueState.history.mapNotNull { entry ->
+                songsById[entry.songId]?.toUiSong(entry)
+            }
 
-        _uiState.value = PlaybackUiState(
-            isPlaying = player.isPlaying,
-            currentSong = current?.toUiSong(queueState.currentItem),
-            history = history,
-            upcoming = upcoming,
-            durationMs = player.duration.takeIf { it > 0 } ?: current?.durationMs ?: 0L,
-            repeatMode = player.repeatMode,
-        )
+        _uiState.value =
+            PlaybackUiState(
+                isPlaying = player.isPlaying,
+                currentSong = current?.toUiSong(queueState.currentItem),
+                history = history,
+                upcoming = upcoming,
+                durationMs = player.duration.takeIf { it > 0 } ?: current?.durationMs ?: 0L,
+                repeatMode = player.repeatMode,
+            )
         _currentPositionMs.value = player.currentPosition.coerceAtLeast(0L)
         _currentSongId.value = current?.id
     }
@@ -667,7 +696,10 @@ class PlaybackManager(
     private suspend fun loadSongsById(ids: List<Long>): Map<Long, SongEntity> =
         libraryRepository.getSongsByIds(ids.distinct()).associateBy { it.id }
 
-    private fun buildMediaItem(entry: QueueEntry, song: SongEntity): MediaItem =
+    private fun buildMediaItem(
+        entry: QueueEntry,
+        song: SongEntity,
+    ): MediaItem =
         MediaItem.Builder()
             .setMediaId(entry.entryId)
             .setUri(Uri.parse(song.contentUri))
@@ -677,7 +709,7 @@ class PlaybackManager(
                     .setArtist(song.artist)
                     .setAlbumTitle(song.album)
                     .setArtworkUri(song.albumArtUri?.toUri())
-                    .build()
+                    .build(),
             )
             .build()
 
@@ -687,11 +719,12 @@ class PlaybackManager(
      * Called lazily for the current song only — loading bytes for the entire queue
      * would block syncPlayer for tens of seconds when the queue is large.
      */
-    private suspend fun loadArtworkBytes(uri: String): ByteArray? = withContext(Dispatchers.IO) {
-        runCatching {
-            applicationContext.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
-        }.getOrNull()
-    }
+    private suspend fun loadArtworkBytes(uri: String): ByteArray? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                applicationContext.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+            }.getOrNull()
+        }
 
     /**
      * Loads the album art for whatever song is currently playing and replaces the
@@ -706,18 +739,20 @@ class PlaybackManager(
             if (currentEntry.entryId == lastArtworkEntryId) return@launch
 
             val song = libraryRepository.getSongsByIds(listOf(currentEntry.songId)).firstOrNull() ?: return@launch
-            val artUri = song.albumArtUri ?: run {
-                lastArtworkEntryId = currentEntry.entryId
-                return@launch
-            }
+            val artUri =
+                song.albumArtUri ?: run {
+                    lastArtworkEntryId = currentEntry.entryId
+                    return@launch
+                }
             val artBytes = loadArtworkBytes(artUri) ?: return@launch
 
             withContext(Dispatchers.Main.immediate) {
                 val playerCurrent = player.currentMediaItem ?: return@withContext
                 if (playerCurrent.mediaId != currentEntry.entryId) return@withContext
-                val updatedMetadata = playerCurrent.mediaMetadata.buildUpon()
-                    .setArtworkData(artBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                    .build()
+                val updatedMetadata =
+                    playerCurrent.mediaMetadata.buildUpon()
+                        .setArtworkData(artBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                        .build()
                 val updatedItem = playerCurrent.buildUpon().setMediaMetadata(updatedMetadata).build()
                 player.replaceMediaItem(player.currentMediaItemIndex, updatedItem)
                 lastArtworkEntryId = currentEntry.entryId
@@ -754,15 +789,16 @@ class PlaybackManager(
         }
     }
 
-    private fun SongEntity.toUiSong(entry: QueueEntry) = PlaybackSongUiModel(
-        entryId = entry.entryId,
-        songId = id,
-        title = title,
-        artist = artist,
-        album = album,
-        durationMs = durationMs,
-        albumArtUri = albumArtUri,
-    )
+    private fun SongEntity.toUiSong(entry: QueueEntry) =
+        PlaybackSongUiModel(
+            entryId = entry.entryId,
+            songId = id,
+            title = title,
+            artist = artist,
+            album = album,
+            durationMs = durationMs,
+            albumArtUri = albumArtUri,
+        )
 }
 
 data class PlaybackUiState(

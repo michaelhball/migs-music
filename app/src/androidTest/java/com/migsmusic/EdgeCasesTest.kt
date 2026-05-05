@@ -5,7 +5,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -89,9 +88,10 @@ class EdgeCasesTest {
         // Spam directly through PlaybackManager — the UI's overflow-menu pattern doesn't
         // support real rapid spam (each tap requires open + select + close).
         val pm = app.appContainer.playbackManager
-        val songIds = kotlinx.coroutines.runBlocking {
-            app.appContainer.libraryRepository.observeAllSongs().first()
-        }.map { it.id }
+        val songIds =
+            kotlinx.coroutines.runBlocking {
+                app.appContainer.libraryRepository.observeAllSongs().first()
+            }.map { it.id }
         require(songIds.size >= 5) { "Need at least 5 songs to spam Play Later from" }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             repeat(4) { pm.playLater(songIds[1]) }
@@ -110,9 +110,10 @@ class EdgeCasesTest {
         composeRule.waitForLibraryScanSettled(minSongs = 1)
 
         // Seed an explicit single-song queue via the playback manager so we control what "end" means.
-        val songId = runBlocking {
-            app.appContainer.libraryRepository.observeAllSongs().first().first().id
-        }
+        val songId =
+            runBlocking {
+                app.appContainer.libraryRepository.observeAllSongs().first().first().id
+            }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             app.appContainer.playbackManager.playContext(listOf(songId), 0, false)
         }

@@ -33,7 +33,11 @@ class MediaPlaybackService : MediaSessionService() {
         mediaSession = playbackManager.getOrCreateMediaSession(this)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         // The OS gives us 5 seconds after startForegroundService to call startForeground.
         // Media3 will only call it once isPlaying flips true, so do it pre-emptively here
         // with a placeholder. Media3 will replace this notification when the session is active.
@@ -81,21 +85,23 @@ class MediaPlaybackService : MediaSessionService() {
                 ).apply {
                     description = "Now-playing controls"
                     setShowBadge(false)
-                }
+                },
             )
         }
     }
 
     private fun buildBootstrapNotification(): Notification {
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        val launchIntent =
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+        val pendingIntent =
+            PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(getString(R.string.app_name))
@@ -112,6 +118,7 @@ class MediaPlaybackService : MediaSessionService() {
 
     companion object {
         private const val CHANNEL_ID = "migs_music_playback"
+
         // Match Media3 DefaultMediaNotificationProvider.NOTIFICATION_ID so its notification
         // replaces our bootstrap one in place rather than stacking.
         private const val BOOTSTRAP_NOTIF_ID = 1001

@@ -21,6 +21,7 @@ object UiTestTags {
     const val SortButton = "sort_button"
 
     fun sortOption(name: String) = "sort_option_$name"
+
     const val SongList = "song_list"
     const val SongRow = "song_row"
     const val SongActionNext = "song_action_next"
@@ -77,7 +78,10 @@ object UiTestTags {
     const val EmptyState = "empty_state"
 
     fun queueUpcomingRow(index: Int) = "${QueueUpcomingRow}_$index"
+
     fun playlistRow(index: Int) = "${PlaylistRow}_$index"
+
     fun playlistSongRow(index: Int) = "${PlaylistSongRow}_$index"
+
     fun songRow(index: Int) = "${SongRow}_$index"
 }

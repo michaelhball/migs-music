@@ -81,31 +81,35 @@ internal fun PlaylistsRoute(
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Create playlist")
             }
-        }
+        },
     ) { innerPadding ->
         if (playlists.isEmpty()) {
-            Box(modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .testTag(UiTestTags.PlaylistsScreen)
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .testTag(UiTestTags.PlaylistsScreen),
             ) {
                 EmptyState("No playlists yet.\nTap + to create one.")
             }
             return@Scaffold
         }
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .testTag(UiTestTags.PlaylistsScreen),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .testTag(UiTestTags.PlaylistsScreen),
         ) {
             itemsIndexed(playlists, key = { _, item -> item.id }) { _, playlist ->
                 ListRow(
                     title = playlist.name,
                     subtitle = "${playlist.songCount} songs",
-                    modifier = Modifier
-                        .testTag(UiTestTags.PlaylistRow)
-                        .clickable { onOpenPlaylist(playlist.id) },
+                    modifier =
+                        Modifier
+                            .testTag(UiTestTags.PlaylistRow)
+                            .clickable { onOpenPlaylist(playlist.id) },
                     actions = {
                         SmallActionButton(
                             label = "Rename",
@@ -153,9 +157,10 @@ internal fun PlaylistDetailRoute(
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Button(
@@ -192,31 +197,38 @@ internal fun PlaylistDetailRoute(
             return@Column
         }
         val playlistLazyState = rememberLazyListState()
-        val playlistReorderState = rememberReorderableLazyListState(playlistLazyState) { from, to ->
-            if (from.index in songs.indices && to.index in songs.indices && from.index != to.index) {
-                playlistsViewModel.moveSong(playlistId, from.index, to.index)
+        val playlistReorderState =
+            rememberReorderableLazyListState(playlistLazyState) { from, to ->
+                if (from.index in songs.indices && to.index in songs.indices && from.index != to.index) {
+                    playlistsViewModel.moveSong(playlistId, from.index, to.index)
+                }
             }
-        }
         LazyColumn(state = playlistLazyState, modifier = Modifier.fillMaxSize()) {
             itemsIndexed(songs, key = { _, item -> item.playlistItemId }) { index, song ->
-                val onPlay = remember(index, songs) {
-                    { playlistsViewModel.playPlaylist(songs, index, shuffle = false) }
-                }
-                val onRemove = remember(song.playlistItemId) {
-                    { playlistsViewModel.removeSong(song.playlistItemId) }
-                }
-                val onNext = remember(song.songId) {
-                    { playlistsViewModel.addSongToQueueNext(song.songId) }
-                }
-                val onLater = remember(song.songId) {
-                    { playlistsViewModel.addSongToQueueLater(song.songId) }
-                }
-                val onMoveUp = remember(index, playlistId) {
-                    { playlistsViewModel.moveSong(playlistId, index, index - 1) }
-                }
-                val onMoveDown = remember(index, playlistId) {
-                    { playlistsViewModel.moveSong(playlistId, index, index + 1) }
-                }
+                val onPlay =
+                    remember(index, songs) {
+                        { playlistsViewModel.playPlaylist(songs, index, shuffle = false) }
+                    }
+                val onRemove =
+                    remember(song.playlistItemId) {
+                        { playlistsViewModel.removeSong(song.playlistItemId) }
+                    }
+                val onNext =
+                    remember(song.songId) {
+                        { playlistsViewModel.addSongToQueueNext(song.songId) }
+                    }
+                val onLater =
+                    remember(song.songId) {
+                        { playlistsViewModel.addSongToQueueLater(song.songId) }
+                    }
+                val onMoveUp =
+                    remember(index, playlistId) {
+                        { playlistsViewModel.moveSong(playlistId, index, index - 1) }
+                    }
+                val onMoveDown =
+                    remember(index, playlistId) {
+                        { playlistsViewModel.moveSong(playlistId, index, index + 1) }
+                    }
                 ReorderableItem(playlistReorderState, key = song.playlistItemId) { _ ->
                     PlaylistSongRow(
                         song = song,
@@ -255,21 +267,24 @@ internal fun PlaylistSongRow(
     ListRow(
         title = song.title,
         subtitle = "${song.artist} • ${song.album}",
-        modifier = Modifier
-            .testTag(UiTestTags.PlaylistSongRow)
-            .clickable(onClick = onPlay),
-        containerColor = if (isCurrent) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+        modifier =
+            Modifier
+                .testTag(UiTestTags.PlaylistSongRow)
+                .clickable(onClick = onPlay),
+        containerColor =
+            if (isCurrent) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
         titleFontWeight = if (isCurrent) FontWeight.Bold else null,
         leading = {
             AlbumArtImage(
                 uri = song.albumArtUri,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(MaterialTheme.shapes.small),
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .clip(MaterialTheme.shapes.small),
             )
         },
         actions = {

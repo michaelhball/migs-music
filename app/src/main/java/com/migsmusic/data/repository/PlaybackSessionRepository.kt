@@ -23,18 +23,19 @@ class PlaybackSessionRepository(
         repeatMode: Int,
         nextEntrySeed: Long,
     ) {
-        val snapshot = PlaybackSnapshotEntity(
-            currentEntryId = queueState?.currentItem?.entryId,
-            currentSongId = queueState?.currentItem?.songId,
-            currentPositionMs = currentPositionMs,
-            isPlaying = isPlaying,
-            repeatMode = repeatMode,
-            historyEntries = serializeIds(queueState?.history.orEmpty()),
-            nextEntries = serializeIds(queueState?.nextItems.orEmpty()),
-            laterEntries = serializeIds(queueState?.laterItems.orEmpty()),
-            remainingEntries = serializeIds(queueState?.remainingContextItems.orEmpty()),
-            nextEntrySeed = nextEntrySeed,
-        )
+        val snapshot =
+            PlaybackSnapshotEntity(
+                currentEntryId = queueState?.currentItem?.entryId,
+                currentSongId = queueState?.currentItem?.songId,
+                currentPositionMs = currentPositionMs,
+                isPlaying = isPlaying,
+                repeatMode = repeatMode,
+                historyEntries = serializeIds(queueState?.history.orEmpty()),
+                nextEntries = serializeIds(queueState?.nextItems.orEmpty()),
+                laterEntries = serializeIds(queueState?.laterItems.orEmpty()),
+                remainingEntries = serializeIds(queueState?.remainingContextItems.orEmpty()),
+                nextEntrySeed = nextEntrySeed,
+            )
         playbackSnapshotDao.upsertSnapshot(snapshot)
     }
 
@@ -45,6 +46,7 @@ class PlaybackSessionRepository(
         // Mint fresh entryIds from the saved seed forward — entryIds are session-local
         // identifiers, regenerable from (seed, songId) and don't need to round-trip through DB.
         var seed = snapshot.nextEntrySeed
+
         fun mint(songId: Long): QueueEntry {
             seed += 1
             return QueueEntry(entryId = "entry-$seed", songId = songId)
@@ -57,13 +59,14 @@ class PlaybackSessionRepository(
         val remaining = parseIds(snapshot.remainingEntries).map(::mint)
 
         return RestoredPlaybackSession(
-            queueState = QueueState(
-                history = history,
-                currentItem = current,
-                nextItems = nextItems,
-                laterItems = laterItems,
-                remainingContextItems = remaining,
-            ),
+            queueState =
+                QueueState(
+                    history = history,
+                    currentItem = current,
+                    nextItems = nextItems,
+                    laterItems = laterItems,
+                    remainingContextItems = remaining,
+                ),
             currentPositionMs = snapshot.currentPositionMs,
             isPlaying = snapshot.isPlaying,
             repeatMode = snapshot.repeatMode,
@@ -71,8 +74,7 @@ class PlaybackSessionRepository(
         )
     }
 
-    private fun serializeIds(entries: List<QueueEntry>): String =
-        entries.joinToString(separator = ",") { it.songId.toString() }
+    private fun serializeIds(entries: List<QueueEntry>): String = entries.joinToString(separator = ",") { it.songId.toString() }
 
     private fun parseIds(serialized: String): List<Long> {
         if (serialized.isBlank()) return emptyList()

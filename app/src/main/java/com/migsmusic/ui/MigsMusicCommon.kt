@@ -51,10 +51,11 @@ internal fun ListRow(
     actions: @Composable (() -> Unit)? = null,
 ) {
     Row(
-        modifier = modifier
-            .background(color = containerColor)
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier =
+            modifier
+                .background(color = containerColor)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) {
@@ -87,9 +88,10 @@ internal fun EmptyState(
     fillSize: Boolean = true,
 ) {
     Box(
-        modifier = (if (fillSize) modifier.fillMaxSize() else modifier.fillMaxWidth())
-            .padding(horizontal = 32.dp, vertical = 64.dp)
-            .testTag(testTag),
+        modifier =
+            (if (fillSize) modifier.fillMaxSize() else modifier.fillMaxWidth())
+                .padding(horizontal = 32.dp, vertical = 64.dp)
+                .testTag(testTag),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -142,16 +144,18 @@ internal fun AlbumArtImage(
             )
         } else {
             AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(uri)
-                    .crossfade(false) // animations break Compose-test idle resource
-                    .build(),
+                model =
+                    ImageRequest.Builder(context)
+                        .data(uri)
+                        .crossfade(false) // animations break Compose-test idle resource
+                        .build(),
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
-                error = androidx.compose.ui.graphics.painter.ColorPainter(
-                    MaterialTheme.colorScheme.surfaceContainerHighest
-                ),
+                error =
+                    androidx.compose.ui.graphics.painter.ColorPainter(
+                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                    ),
             )
         }
     }
@@ -187,20 +191,18 @@ internal fun SortMenu(
     }
 }
 
-internal fun FolderSummary.encodedPath(): String =
-    URLEncoder.encode(path, StandardCharsets.UTF_8.toString())
+internal fun FolderSummary.encodedPath(): String = URLEncoder.encode(path, StandardCharsets.UTF_8.toString())
 
-internal fun AlbumSummary.encodedKey(): String =
-    URLEncoder.encode(key, StandardCharsets.UTF_8.toString())
+internal fun AlbumSummary.encodedKey(): String = URLEncoder.encode(key, StandardCharsets.UTF_8.toString())
 
-internal fun ArtistSummary.encodedName(): String =
-    URLEncoder.encode(name, StandardCharsets.UTF_8.toString())
+internal fun ArtistSummary.encodedName(): String = URLEncoder.encode(name, StandardCharsets.UTF_8.toString())
 
-internal fun repeatModeLabel(repeatMode: Int): String = when (repeatMode) {
-    1 -> "All"
-    2 -> "One"
-    else -> "Off"
-}
+internal fun repeatModeLabel(repeatMode: Int): String =
+    when (repeatMode) {
+        1 -> "All"
+        2 -> "One"
+        else -> "Off"
+    }
 
 internal fun formatDuration(durationMs: Long): String {
     val totalSeconds = (durationMs / 1000).coerceAtLeast(0L)
@@ -210,7 +212,10 @@ internal fun formatDuration(durationMs: Long): String {
 }
 
 /** "23 songs · 1h 24m" or "5 songs · 18m" — used in playlist + folder + queue headers. */
-internal fun formatCountAndDuration(count: Int, totalMs: Long): String {
+internal fun formatCountAndDuration(
+    count: Int,
+    totalMs: Long,
+): String {
     val totalSeconds = (totalMs / 1000).coerceAtLeast(0L)
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60

@@ -60,7 +60,7 @@ class MediaSessionTest {
         check(
             dump.contains("package=com.migsmusic") ||
                 dump.contains("com.migsmusic/") ||
-                dump.contains("MediaPlaybackService")
+                dump.contains("MediaPlaybackService"),
         ) {
             "MediaSession dump does not show our service. Dump excerpt:\n${dump.take(4000)}"
         }
@@ -102,7 +102,10 @@ class MediaSessionTest {
         } catch (e: IOException) {
             ""
         } finally {
-            try { pfd.close() } catch (_: IOException) {}
+            try {
+                pfd.close()
+            } catch (_: IOException) {
+            }
         }
     }
 }

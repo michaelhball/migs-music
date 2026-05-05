@@ -1,7 +1,6 @@
 package com.migsmusic
 
 import android.os.ParcelFileDescriptor
-import android.view.KeyEvent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -75,13 +74,17 @@ class MediaKeyTest {
         composeRule.onNodeWithTag(UiTestTags.PlayerPlayPause).performClick()
     }
 
-    private fun waitForSessionState(needle: String, timeoutMillis: Long = 15_000L) {
+    private fun waitForSessionState(
+        needle: String,
+        timeoutMillis: Long = 15_000L,
+    ) {
         val deadline = System.currentTimeMillis() + timeoutMillis
         var lastDump = ""
         while (System.currentTimeMillis() < deadline) {
             lastDump = runShell("dumpsys media_session")
-            val ourBlock = lastDump.lines()
-                .filter { it.contains("com.migsmusic") || it.contains("PlaybackState") }
+            val ourBlock =
+                lastDump.lines()
+                    .filter { it.contains("com.migsmusic") || it.contains("PlaybackState") }
             if (ourBlock.any { it.contains(needle) }) return
             Thread.sleep(300)
         }
@@ -96,7 +99,10 @@ class MediaKeyTest {
         } catch (e: IOException) {
             ""
         } finally {
-            try { pfd.close() } catch (_: IOException) {}
+            try {
+                pfd.close()
+            } catch (_: IOException) {
+            }
         }
     }
 }

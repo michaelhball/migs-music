@@ -77,6 +77,7 @@ class ConsecutiveErrorTrackerTest {
 
 private class MutableClock(private var nowMs: Long = 0L) {
     fun now(): Long = nowMs
+
     fun advance(deltaMs: Long) {
         nowMs += deltaMs
     }

@@ -45,26 +45,31 @@ fun MigsMusicApp(
     hasLibraryPermission: Boolean,
     onRequestPermission: () -> Unit,
 ) {
-    val libraryViewModel: LibraryViewModel = viewModel(
-        factory = ViewModelFactory {
-            LibraryViewModel(
-                libraryRepository = appContainer.libraryRepository,
-                playbackManager = appContainer.playbackManager,
-                preferences = appContainer.preferences,
-            )
-        }
-    )
-    val playlistsViewModel: PlaylistsViewModel = viewModel(
-        factory = ViewModelFactory {
-            PlaylistsViewModel(
-                playlistRepository = appContainer.playlistRepository,
-                playbackManager = appContainer.playbackManager,
-            )
-        }
-    )
-    val playerViewModel: PlayerViewModel = viewModel(
-        factory = ViewModelFactory { PlayerViewModel(appContainer.playbackManager) }
-    )
+    val libraryViewModel: LibraryViewModel =
+        viewModel(
+            factory =
+                ViewModelFactory {
+                    LibraryViewModel(
+                        libraryRepository = appContainer.libraryRepository,
+                        playbackManager = appContainer.playbackManager,
+                        preferences = appContainer.preferences,
+                    )
+                },
+        )
+    val playlistsViewModel: PlaylistsViewModel =
+        viewModel(
+            factory =
+                ViewModelFactory {
+                    PlaylistsViewModel(
+                        playlistRepository = appContainer.playlistRepository,
+                        playbackManager = appContainer.playbackManager,
+                    )
+                },
+        )
+    val playerViewModel: PlayerViewModel =
+        viewModel(
+            factory = ViewModelFactory { PlayerViewModel(appContainer.playbackManager) },
+        )
 
     val navController = rememberNavController()
     val playbackState by playerViewModel.playbackUiState.collectAsStateWithLifecycle()
@@ -92,47 +97,49 @@ fun MigsMusicApp(
         bottomBar = {
             // Same: hide the mini-player + nav bar while the full-screen player is up.
             // It's redundant (the player is already showing) and consumes ~120dp of room.
-            if (!onPlayerRoute) Column {
-                MiniPlayer(
-                    playbackState = playbackState,
-                    positionFlow = playerViewModel.currentPositionMs,
-                    onTogglePlayPause = playerViewModel::togglePlayPause,
-                    onSkipNext = playerViewModel::skipToNext,
-                    onSkipPrevious = playerViewModel::skipToPrevious,
-                    onOpenPlayer = { navController.navigate("player") },
-                )
-                NavigationBar {
-                    listOf(
-                        TopLevelDestination("songs", "Songs", Icons.Default.MusicNote, UiTestTags.SongsTab),
-                        TopLevelDestination("folders", "Folders", Icons.Default.Folder, UiTestTags.FoldersTab),
-                        TopLevelDestination(
-                            "playlists",
-                            "Playlists",
-                            Icons.AutoMirrored.Filled.PlaylistPlay,
-                            UiTestTags.PlaylistsTab,
-                        ),
-                        TopLevelDestination(
-                            "queue",
-                            "Queue",
-                            Icons.AutoMirrored.Filled.QueueMusic,
-                            UiTestTags.QueueTab,
-                        ),
-                    ).forEach { destination ->
-                        NavigationBarItem(
-                            modifier = Modifier.testTag(destination.testTag),
-                            selected = currentRoute == destination.route,
-                            onClick = {
-                                navController.navigate(destination.route) {
-                                    launchSingleTop = true
-                                    restoreState = true
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
+            if (!onPlayerRoute) {
+                Column {
+                    MiniPlayer(
+                        playbackState = playbackState,
+                        positionFlow = playerViewModel.currentPositionMs,
+                        onTogglePlayPause = playerViewModel::togglePlayPause,
+                        onSkipNext = playerViewModel::skipToNext,
+                        onSkipPrevious = playerViewModel::skipToPrevious,
+                        onOpenPlayer = { navController.navigate("player") },
+                    )
+                    NavigationBar {
+                        listOf(
+                            TopLevelDestination("songs", "Songs", Icons.Default.MusicNote, UiTestTags.SongsTab),
+                            TopLevelDestination("folders", "Folders", Icons.Default.Folder, UiTestTags.FoldersTab),
+                            TopLevelDestination(
+                                "playlists",
+                                "Playlists",
+                                Icons.AutoMirrored.Filled.PlaylistPlay,
+                                UiTestTags.PlaylistsTab,
+                            ),
+                            TopLevelDestination(
+                                "queue",
+                                "Queue",
+                                Icons.AutoMirrored.Filled.QueueMusic,
+                                UiTestTags.QueueTab,
+                            ),
+                        ).forEach { destination ->
+                            NavigationBarItem(
+                                modifier = Modifier.testTag(destination.testTag),
+                                selected = currentRoute == destination.route,
+                                onClick = {
+                                    navController.navigate(destination.route) {
+                                        launchSingleTop = true
+                                        restoreState = true
+                                        popUpTo(navController.graph.startDestinationId) {
+                                            saveState = true
+                                        }
                                     }
-                                }
-                            },
-                            icon = { Icon(destination.icon, contentDescription = destination.label) },
-                            label = { Text(destination.label) },
-                        )
+                                },
+                                icon = { Icon(destination.icon, contentDescription = destination.label) },
+                                label = { Text(destination.label) },
+                            )
+                        }
                     }
                 }
             }
@@ -172,9 +179,10 @@ fun MigsMusicApp(
                 route = "album/{albumKey}",
                 arguments = listOf(navArgument("albumKey") { type = NavType.StringType }),
             ) { backStackEntry ->
-                val decodedKey = backStackEntry.arguments?.getString("albumKey")
-                    ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.toString()) }
-                    .orEmpty()
+                val decodedKey =
+                    backStackEntry.arguments?.getString("albumKey")
+                        ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.toString()) }
+                        .orEmpty()
                 AlbumDetailRoute(
                     albumKey = decodedKey,
                     libraryViewModel = libraryViewModel,
@@ -194,9 +202,10 @@ fun MigsMusicApp(
                 route = "artist/{artistName}",
                 arguments = listOf(navArgument("artistName") { type = NavType.StringType }),
             ) { backStackEntry ->
-                val decodedArtist = backStackEntry.arguments?.getString("artistName")
-                    ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.toString()) }
-                    .orEmpty()
+                val decodedArtist =
+                    backStackEntry.arguments?.getString("artistName")
+                        ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.toString()) }
+                        .orEmpty()
                 ArtistDetailRoute(
                     artist = decodedArtist,
                     libraryViewModel = libraryViewModel,
@@ -217,9 +226,10 @@ fun MigsMusicApp(
                 route = "folder/{path}",
                 arguments = listOf(navArgument("path") { type = NavType.StringType }),
             ) { backStackEntry ->
-                val decodedPath = backStackEntry.arguments?.getString("path")
-                    ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.toString()) }
-                    .orEmpty()
+                val decodedPath =
+                    backStackEntry.arguments?.getString("path")
+                        ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.toString()) }
+                        .orEmpty()
                 FolderDetailRoute(
                     folderPath = decodedPath,
                     libraryViewModel = libraryViewModel,
@@ -290,9 +300,10 @@ private fun PermissionGate(
     onRequestPermission: () -> Unit,
 ) {
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(

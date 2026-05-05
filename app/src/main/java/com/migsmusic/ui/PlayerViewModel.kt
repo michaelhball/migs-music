@@ -11,6 +11,7 @@ class PlayerViewModel(
     val playbackUiState: StateFlow<PlaybackUiState> = playbackManager.uiState
     val currentPositionMs: StateFlow<Long> = playbackManager.currentPositionMs
     val shuffleEnabled: StateFlow<Boolean> = playbackManager.shuffleEnabled
+
     /** Convenience flow exposing just the currently-playing song id (or null). */
     val currentSongId: StateFlow<Long?> = playbackManager.currentSongId
 
@@ -26,7 +27,10 @@ class PlayerViewModel(
 
     fun removeUpcoming(entryId: String) = playbackManager.removeUpcoming(entryId)
 
-    fun moveUpcoming(entryId: String, newIndex: Int) = playbackManager.moveUpcoming(entryId, newIndex)
+    fun moveUpcoming(
+        entryId: String,
+        newIndex: Int,
+    ) = playbackManager.moveUpcoming(entryId, newIndex)
 
     fun seekTo(positionMs: Long) = playbackManager.seekTo(positionMs)
 

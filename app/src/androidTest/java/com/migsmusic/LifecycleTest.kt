@@ -1,5 +1,6 @@
 package com.migsmusic
 
+import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -13,7 +14,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.FileInputStream
-import android.os.ParcelFileDescriptor
 import java.io.IOException
 
 /**
@@ -76,7 +76,10 @@ class LifecycleTest {
         } catch (e: IOException) {
             ""
         } finally {
-            try { pfd.close() } catch (_: IOException) {}
+            try {
+                pfd.close()
+            } catch (_: IOException) {
+            }
         }
     }
 }

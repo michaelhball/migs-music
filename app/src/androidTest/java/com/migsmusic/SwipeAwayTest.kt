@@ -3,7 +3,6 @@ package com.migsmusic
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -64,22 +63,28 @@ class SwipeAwayTest {
         while (System.currentTimeMillis() < deadline) {
             lastSession = runShell("dumpsys media_session")
             lastService = runShell("dumpsys activity services com.migsmusic")
-            val ourSessionStillPlaying = lastSession.lines().any { line ->
-                line.contains("com.migsmusic") && line.contains("state=PLAYING(3)")
-            }
-            val ourServiceForeground = lastService.contains("MediaPlaybackService") &&
-                lastService.contains("isForeground=true")
+            val ourSessionStillPlaying =
+                lastSession.lines().any { line ->
+                    line.contains("com.migsmusic") && line.contains("state=PLAYING(3)")
+                }
+            val ourServiceForeground =
+                lastService.contains("MediaPlaybackService") &&
+                    lastService.contains("isForeground=true")
             if (!ourSessionStillPlaying && !ourServiceForeground) return
             Thread.sleep(300)
         }
         error(
             "Playback did not stop after task removal.\n" +
                 "media_session excerpt:\n${lastSession.take(2000)}\n" +
-                "activity services excerpt:\n${lastService.take(2000)}"
+                "activity services excerpt:\n${lastService.take(2000)}",
         )
     }
 
-    private fun waitForDumpsysContains(command: String, needle: String, timeoutMillis: Long) {
+    private fun waitForDumpsysContains(
+        command: String,
+        needle: String,
+        timeoutMillis: Long,
+    ) {
         val deadline = System.currentTimeMillis() + timeoutMillis
         while (System.currentTimeMillis() < deadline) {
             if (runShell(command).contains(needle)) return
@@ -96,7 +101,10 @@ class SwipeAwayTest {
         } catch (e: IOException) {
             ""
         } finally {
-            try { pfd.close() } catch (_: IOException) {}
+            try {
+                pfd.close()
+            } catch (_: IOException) {
+            }
         }
     }
 }

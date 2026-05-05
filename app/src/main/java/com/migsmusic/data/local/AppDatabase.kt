@@ -22,6 +22,8 @@ import com.migsmusic.data.local.entity.SongEntity
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun songDao(): SongDao
+
     abstract fun playlistDao(): PlaylistDao
+
     abstract fun playbackSnapshotDao(): PlaybackSnapshotDao
 }

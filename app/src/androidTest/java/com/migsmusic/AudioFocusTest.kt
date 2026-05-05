@@ -60,15 +60,16 @@ class AudioFocusTest {
         // Steal audio focus from the test process — simulates another media app starting.
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            .setOnAudioFocusChangeListener { /* no-op */ }
-            .build()
+        val request =
+            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build(),
+                )
+                .setOnAudioFocusChangeListener { /* no-op */ }
+                .build()
         val result = audioManager.requestAudioFocus(request)
         require(result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             "Focus request not granted (got $result); cannot validate focus behavior"
@@ -86,7 +87,10 @@ class AudioFocusTest {
         }
     }
 
-    private fun waitForDumpsysAbsent(needle: String, timeoutMillis: Long) {
+    private fun waitForDumpsysAbsent(
+        needle: String,
+        timeoutMillis: Long,
+    ) {
         val deadline = System.currentTimeMillis() + timeoutMillis
         var lastState: String? = null
         var lastDump = ""
@@ -100,7 +104,7 @@ class AudioFocusTest {
         }
         error(
             "MediaSession state for com.migsmusic never lost '$needle'.\n" +
-                "Last state: $lastState\nDump excerpt:\n${lastDump.take(3000)}"
+                "Last state: $lastState\nDump excerpt:\n${lastDump.take(3000)}",
         )
     }
 
@@ -114,7 +118,7 @@ class AudioFocusTest {
         for (i in lines.indices) {
             if (!lines[i].contains("package=com.migsmusic")) continue
             for (j in (i + 1)..(i + 50).coerceAtMost(lines.lastIndex)) {
-                if (lines[j].contains("package=")) break  // entered a new session block
+                if (lines[j].contains("package=")) break // entered a new session block
                 if (lines[j].contains("state=PlaybackState{state=")) {
                     return lines[j].trim()
                 }
@@ -131,7 +135,10 @@ class AudioFocusTest {
         } catch (e: IOException) {
             ""
         } finally {
-            try { pfd.close() } catch (_: IOException) {}
+            try {
+                pfd.close()
+            } catch (_: IOException) {
+            }
         }
     }
 }

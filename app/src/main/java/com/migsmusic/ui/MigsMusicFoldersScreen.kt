@@ -88,16 +88,18 @@ internal fun HierarchicalFolderView(
     val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(screenTag),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .testTag(screenTag),
     ) {
         if (title != null) {
             item {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (onGoUp != null) {
@@ -119,9 +121,10 @@ internal fun HierarchicalFolderView(
         if (recursiveSongs.isNotEmpty()) {
             item {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -145,9 +148,10 @@ internal fun HierarchicalFolderView(
                 ListRow(
                     title = folder.name,
                     subtitle = "${folder.songCount} songs",
-                    modifier = Modifier
-                        .testTag(UiTestTags.FolderRow)
-                        .clickable { onOpenFolder(folder) },
+                    modifier =
+                        Modifier
+                            .testTag(UiTestTags.FolderRow)
+                            .clickable { onOpenFolder(folder) },
                     actions = { Icon(Icons.Default.Folder, contentDescription = null) },
                 )
                 HorizontalDivider()
@@ -156,9 +160,10 @@ internal fun HierarchicalFolderView(
         if (directSongs.isNotEmpty()) {
             item { SectionHeader("Songs") }
             itemsIndexed(directSongs, key = { _, item -> "s:" + item.id }) { index, song ->
-                val onPlay = remember(index, directSongs) {
-                    { libraryViewModel.playSongs(directSongs, index, shuffle = false) }
-                }
+                val onPlay =
+                    remember(index, directSongs) {
+                        { libraryViewModel.playSongs(directSongs, index, shuffle = false) }
+                    }
                 val onNext = remember(song.id) { { libraryViewModel.playNext(song.id) } }
                 val onLater = remember(song.id) { { libraryViewModel.playLater(song.id) } }
                 val onAdd = remember(song.id) { { openAddToPlaylist(song.id) } }

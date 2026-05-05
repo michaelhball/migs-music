@@ -29,21 +29,26 @@ class LibrarySyncObserver(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var debounceJob: Job? = null
 
-    private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-        override fun onChange(selfChange: Boolean) {
-            scheduleScan()
-        }
+    private val observer =
+        object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                scheduleScan()
+            }
 
-        override fun onChange(selfChange: Boolean, uri: Uri?) {
-            scheduleScan()
+            override fun onChange(
+                selfChange: Boolean,
+                uri: Uri?,
+            ) {
+                scheduleScan()
+            }
         }
-    }
 
     fun start() {
         runCatching {
             context.contentResolver.registerContentObserver(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                /* notifyForDescendants = */ true,
+                // notifyForDescendants =
+                true,
                 observer,
             )
         }.onFailure { Log.w(TAG, "Failed to register MediaStore observer: ${it.message}") }
@@ -61,11 +66,12 @@ class LibrarySyncObserver(
      */
     private fun scheduleScan() {
         debounceJob?.cancel()
-        debounceJob = scope.launch {
-            delay(DEBOUNCE_MS)
-            runCatching { libraryRepository.scanDevice() }
-                .onFailure { Log.w(TAG, "Auto-rescan failed: ${it.message}") }
-        }
+        debounceJob =
+            scope.launch {
+                delay(DEBOUNCE_MS)
+                runCatching { libraryRepository.scanDevice() }
+                    .onFailure { Log.w(TAG, "Auto-rescan failed: ${it.message}") }
+            }
     }
 
     private companion object {

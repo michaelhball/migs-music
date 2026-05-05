@@ -29,7 +29,10 @@ class QueueFlowsTest {
      * Songs now expose actions via a "..." overflow menu (or long-press). Tap the row's
      * menu icon, wait for the named action, tap it. Menu auto-dismisses.
      */
-    private fun openSongMenuAndTap(rowIndex: Int, actionTag: String) {
+    private fun openSongMenuAndTap(
+        rowIndex: Int,
+        actionTag: String,
+    ) {
         composeRule.onAllNodesWithTag(UiTestTags.SongRowMenu)[rowIndex].performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.hasNode(actionTag) }
         composeRule.onNodeWithTag(actionTag).performClick()

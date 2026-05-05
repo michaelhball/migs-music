@@ -14,9 +14,10 @@ class AppPreferences(context: Context) {
         context.getSharedPreferences("migs-music-prefs", Context.MODE_PRIVATE)
 
     var songSortOrder: SongSortOrder
-        get() = prefs.getString(KEY_SONG_SORT, null)
-            ?.let { name -> runCatching { SongSortOrder.valueOf(name) }.getOrNull() }
-            ?: SongSortOrder.TITLE_ASC
+        get() =
+            prefs.getString(KEY_SONG_SORT, null)
+                ?.let { name -> runCatching { SongSortOrder.valueOf(name) }.getOrNull() }
+                ?: SongSortOrder.TITLE_ASC
         set(value) = prefs.edit { putString(KEY_SONG_SORT, value.name) }
 
     var shuffleEnabled: Boolean

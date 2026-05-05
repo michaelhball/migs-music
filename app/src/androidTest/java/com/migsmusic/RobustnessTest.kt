@@ -1,5 +1,6 @@
 package com.migsmusic
 
+import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -14,7 +15,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.FileInputStream
-import android.os.ParcelFileDescriptor
 import java.io.IOException
 
 /**
@@ -63,12 +63,14 @@ class RobustnessTest {
         // be tapped 5 times in tight succession (each tap requires open + select + close).
         // Direct PlaybackManager calls test the real stress path: rapid addNext on top of
         // an already-playing context.
-        val app = InstrumentationRegistry.getInstrumentation()
-            .targetContext.applicationContext as MigsMusicApplication
+        val app =
+            InstrumentationRegistry.getInstrumentation()
+                .targetContext.applicationContext as MigsMusicApplication
         val pm = app.appContainer.playbackManager
-        val allSongs = kotlinx.coroutines.runBlocking {
-            app.appContainer.libraryRepository.observeAllSongs().first()
-        }
+        val allSongs =
+            kotlinx.coroutines.runBlocking {
+                app.appContainer.libraryRepository.observeAllSongs().first()
+            }
         require(allSongs.size >= 6) { "Need at least 6 songs to spam Play Next from" }
         val songIds = allSongs.map { it.id }
 
@@ -131,21 +133,23 @@ class RobustnessTest {
     private fun assertCleanLogcat() {
         // Pull a chunk; look for problem signatures.
         val dump = runShell("logcat -d -t 2000")
-        val problems = listOf(
-            "FATAL EXCEPTION",
-            "AndroidRuntime: FATAL",
-            "ANR in com.migsmusic",
-            "wrong thread",
-            "StrictMode policy violation",
-            "Player is accessed",
-            "must be called on the main thread",
-        )
+        val problems =
+            listOf(
+                "FATAL EXCEPTION",
+                "AndroidRuntime: FATAL",
+                "ANR in com.migsmusic",
+                "wrong thread",
+                "StrictMode policy violation",
+                "Player is accessed",
+                "must be called on the main thread",
+            )
         for (signature in problems) {
             check(!dump.contains(signature)) {
-                val context = dump.lines()
-                    .windowed(size = 6, step = 1, partialWindows = true)
-                    .firstOrNull { window -> window.any { it.contains(signature) } }
-                    ?.joinToString("\n") ?: "(no context)"
+                val context =
+                    dump.lines()
+                        .windowed(size = 6, step = 1, partialWindows = true)
+                        .firstOrNull { window -> window.any { it.contains(signature) } }
+                        ?.joinToString("\n") ?: "(no context)"
                 "Logcat contained problematic signature '$signature'. Context:\n$context"
             }
         }
@@ -159,7 +163,10 @@ class RobustnessTest {
         } catch (e: IOException) {
             ""
         } finally {
-            try { pfd.close() } catch (_: IOException) {}
+            try {
+                pfd.close()
+            } catch (_: IOException) {
+            }
         }
     }
 }

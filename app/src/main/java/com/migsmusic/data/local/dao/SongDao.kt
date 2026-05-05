@@ -28,7 +28,7 @@ interface SongDao {
         WHERE folderPath != ''
         GROUP BY folderPath, folderName
         ORDER BY LOWER(folderPath)
-        """
+        """,
     )
     fun observeFolders(): Flow<List<FolderSummary>>
 
@@ -37,7 +37,7 @@ interface SongDao {
         SELECT * FROM songs
         WHERE folderPath = :folderPath
         ORDER BY discNumber, trackNumber, LOWER(title)
-        """
+        """,
     )
     fun observeSongsInFolder(folderPath: String): Flow<List<SongEntity>>
 
@@ -52,7 +52,7 @@ interface SongDao {
            OR folderPath = :folderPath
            OR folderPath LIKE :folderPath || '/%'
         ORDER BY LOWER(folderPath), discNumber, trackNumber, LOWER(title)
-        """
+        """,
     )
     fun observeSongsRecursivelyIn(folderPath: String): Flow<List<SongEntity>>
 
@@ -71,7 +71,7 @@ interface SongDao {
         FROM songs
         GROUP BY album, artist
         ORDER BY LOWER(album), LOWER(artist)
-        """
+        """,
     )
     fun observeAlbums(): Flow<List<AlbumSummary>>
 
@@ -84,7 +84,7 @@ interface SongDao {
         FROM songs
         GROUP BY artist
         ORDER BY LOWER(artist)
-        """
+        """,
     )
     fun observeArtists(): Flow<List<ArtistSummary>>
 
@@ -93,7 +93,7 @@ interface SongDao {
         SELECT * FROM songs
         WHERE artist = :artist
         ORDER BY LOWER(album), discNumber, trackNumber, LOWER(title)
-        """
+        """,
     )
     fun observeSongsByArtist(artist: String): Flow<List<SongEntity>>
 
@@ -102,7 +102,7 @@ interface SongDao {
         SELECT * FROM songs
         WHERE album || '|||' || artist = :albumKey
         ORDER BY discNumber, trackNumber, LOWER(title)
-        """
+        """,
     )
     fun observeSongsByAlbum(albumKey: String): Flow<List<SongEntity>>
 
@@ -114,7 +114,7 @@ interface SongDao {
            OR album LIKE '%' || :query || '%'
            OR folderName LIKE '%' || :query || '%'
         ORDER BY LOWER(title), LOWER(artist)
-        """
+        """,
     )
     fun searchSongs(query: String): Flow<List<SongEntity>>
 

@@ -31,11 +31,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             MigsMusicTheme {
                 var hasPermission by remember { mutableStateOf(checkMusicPermission()) }
-                val permissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestPermission()
-                ) { granted ->
-                    hasPermission = granted
-                }
+                val permissionLauncher =
+                    rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.RequestPermission(),
+                    ) { granted ->
+                        hasPermission = granted
+                    }
 
                 MigsMusicApp(
                     appContainer = appContainer,

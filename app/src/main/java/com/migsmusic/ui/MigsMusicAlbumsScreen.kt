@@ -40,9 +40,10 @@ internal fun AlbumsRoute(
                 leading = {
                     AlbumArtImage(
                         uri = album.albumArtUri,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(MaterialTheme.shapes.small),
+                        modifier =
+                            Modifier
+                                .size(48.dp)
+                                .clip(MaterialTheme.shapes.small),
                     )
                 },
             )
@@ -73,9 +74,10 @@ internal fun AlbumDetailRoute(
             modifier = Modifier.padding(horizontal = 16.dp),
         )
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Button(onClick = { libraryViewModel.playSongs(songs, 0, shuffle = false) }, enabled = songs.isNotEmpty()) {
@@ -131,9 +133,10 @@ internal fun ArtistDetailRoute(
             modifier = Modifier.padding(16.dp),
         )
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Button(onClick = { libraryViewModel.playSongs(songs, 0, shuffle = false) }, enabled = songs.isNotEmpty()) {

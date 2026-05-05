@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.migsmusic.AppPreferences
 import com.migsmusic.data.local.entity.SongEntity
-import java.util.concurrent.atomic.AtomicBoolean
 import com.migsmusic.data.local.model.AlbumSummary
 import com.migsmusic.data.local.model.ArtistSummary
 import com.migsmusic.data.local.model.FolderSummary
@@ -25,6 +24,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class LibraryViewModel(
@@ -37,30 +37,35 @@ class LibraryViewModel(
     private val sortOrder = MutableStateFlow(preferences.songSortOrder)
     val songSortOrder: StateFlow<SongSortOrder> = sortOrder
 
-    val folders: StateFlow<List<FolderSummary>> = libraryRepository.observeFolders()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val folders: StateFlow<List<FolderSummary>> =
+        libraryRepository.observeFolders()
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     private val allSongsSource = libraryRepository.observeAllSongs()
 
-    private val debouncedQuery = searchQuery
-        .debounce(150)
-        .map(String::trim)
-        .distinctUntilChanged()
+    private val debouncedQuery =
+        searchQuery
+            .debounce(150)
+            .map(String::trim)
+            .distinctUntilChanged()
 
-    val visibleSongs: StateFlow<List<SongEntity>> = combine(
-        debouncedQuery.flatMapLatest { query ->
-            if (query.isBlank()) allSongsSource else libraryRepository.searchSongs(query)
-        },
-        sortOrder,
-    ) { songs, order -> sortSongs(songs, order) }
-        .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val visibleSongs: StateFlow<List<SongEntity>> =
+        combine(
+            debouncedQuery.flatMapLatest { query ->
+                if (query.isBlank()) allSongsSource else libraryRepository.searchSongs(query)
+            },
+            sortOrder,
+        ) { songs, order -> sortSongs(songs, order) }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val artists: StateFlow<List<ArtistSummary>> = libraryRepository.observeArtists()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val artists: StateFlow<List<ArtistSummary>> =
+        libraryRepository.observeArtists()
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val albums: StateFlow<List<AlbumSummary>> = libraryRepository.observeAlbums()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val albums: StateFlow<List<AlbumSummary>> =
+        libraryRepository.observeAlbums()
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val libraryScanState: StateFlow<LibraryScanState> = scanState
 
@@ -95,39 +100,45 @@ class LibraryViewModel(
         preferences.songSortOrder = order
     }
 
-    private fun sortSongs(songs: List<SongEntity>, order: SongSortOrder): List<SongEntity> = when (order) {
-        SongSortOrder.TITLE_ASC -> songs.sortedWith(compareBy({ it.title.lowercase() }, { it.artist.lowercase() }))
-        SongSortOrder.TITLE_DESC -> songs.sortedWith(
-            compareByDescending<SongEntity> { it.title.lowercase() }.thenBy { it.artist.lowercase() }
-        )
-        SongSortOrder.ARTIST_ASC -> songs.sortedWith(
-            compareBy({ it.artist.lowercase() }, { it.album.lowercase() }, { it.discNumber }, { it.trackNumber }, { it.title.lowercase() })
-        )
-        SongSortOrder.DATE_ADDED_DESC -> songs.sortedByDescending { it.dateAddedSeconds }
-        SongSortOrder.DURATION_ASC -> songs.sortedBy { it.durationMs }
-        SongSortOrder.DURATION_DESC -> songs.sortedByDescending { it.durationMs }
-    }
+    private fun sortSongs(
+        songs: List<SongEntity>,
+        order: SongSortOrder,
+    ): List<SongEntity> =
+        when (order) {
+            SongSortOrder.TITLE_ASC -> songs.sortedWith(compareBy({ it.title.lowercase() }, { it.artist.lowercase() }))
+            SongSortOrder.TITLE_DESC ->
+                songs.sortedWith(
+                    compareByDescending<SongEntity> { it.title.lowercase() }.thenBy { it.artist.lowercase() },
+                )
+            SongSortOrder.ARTIST_ASC ->
+                songs.sortedWith(
+                    compareBy(
+                        { it.artist.lowercase() },
+                        { it.album.lowercase() },
+                        { it.discNumber },
+                        { it.trackNumber },
+                        { it.title.lowercase() },
+                    ),
+                )
+            SongSortOrder.DATE_ADDED_DESC -> songs.sortedByDescending { it.dateAddedSeconds }
+            SongSortOrder.DURATION_ASC -> songs.sortedBy { it.durationMs }
+            SongSortOrder.DURATION_DESC -> songs.sortedByDescending { it.durationMs }
+        }
 
-    fun songsInFolder(folderPath: String): Flow<List<SongEntity>> =
-        libraryRepository.observeSongsInFolder(folderPath)
+    fun songsInFolder(folderPath: String): Flow<List<SongEntity>> = libraryRepository.observeSongsInFolder(folderPath)
 
     /** Subfolders directly under [parentPath]. Empty string = top-level. */
-    fun subfoldersOf(parentPath: String): Flow<List<FolderSummary>> =
-        libraryRepository.observeSubfolders(parentPath)
+    fun subfoldersOf(parentPath: String): Flow<List<FolderSummary>> = libraryRepository.observeSubfolders(parentPath)
 
     /** Songs whose folderPath equals [parentPath] exactly (no recursion). */
-    fun directSongsIn(parentPath: String): Flow<List<SongEntity>> =
-        libraryRepository.observeDirectSongsIn(parentPath)
+    fun directSongsIn(parentPath: String): Flow<List<SongEntity>> = libraryRepository.observeDirectSongsIn(parentPath)
 
     /** All songs in [parentPath] and its subfolders (recursive). */
-    fun songsRecursivelyIn(parentPath: String): Flow<List<SongEntity>> =
-        libraryRepository.observeSongsRecursivelyIn(parentPath)
+    fun songsRecursivelyIn(parentPath: String): Flow<List<SongEntity>> = libraryRepository.observeSongsRecursivelyIn(parentPath)
 
-    fun songsByArtist(artist: String): Flow<List<SongEntity>> =
-        libraryRepository.observeSongsByArtist(artist)
+    fun songsByArtist(artist: String): Flow<List<SongEntity>> = libraryRepository.observeSongsByArtist(artist)
 
-    fun songsByAlbum(albumKey: String): Flow<List<SongEntity>> =
-        libraryRepository.observeSongsByAlbum(albumKey)
+    fun songsByAlbum(albumKey: String): Flow<List<SongEntity>> = libraryRepository.observeSongsByAlbum(albumKey)
 
     fun scanLibrary() {
         if (scanState.value.isScanning) return
@@ -144,7 +155,11 @@ class LibraryViewModel(
         }
     }
 
-    fun playSongs(songs: List<SongEntity>, startIndex: Int, shuffle: Boolean = false) {
+    fun playSongs(
+        songs: List<SongEntity>,
+        startIndex: Int,
+        shuffle: Boolean = false,
+    ) {
         playbackManager.playContext(
             songIds = songs.map { it.id },
             startIndex = startIndex,

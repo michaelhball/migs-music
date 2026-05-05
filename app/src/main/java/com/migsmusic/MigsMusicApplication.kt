@@ -21,42 +21,48 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
 
-        val database = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            "migs-music.db"
-        )
-            .fallbackToDestructiveMigration(dropAllTables = false)
-            // WAL lets scanDevice writes overlap with UI reads (e.g. observeAllSongs Flow
-            // firing while ContentObserver-driven upserts run). Default TRUNCATE journal
-            // serializes them, which is visible as scroll hitches during heavy MTP transfers.
-            .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .build()
+        val database =
+            Room.databaseBuilder(
+                applicationContext,
+                AppDatabase::class.java,
+                "migs-music.db",
+            )
+                .fallbackToDestructiveMigration(dropAllTables = false)
+                // WAL lets scanDevice writes overlap with UI reads (e.g. observeAllSongs Flow
+                // firing while ContentObserver-driven upserts run). Default TRUNCATE journal
+                // serializes them, which is visible as scroll hitches during heavy MTP transfers.
+                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+                .build()
 
-        val libraryRepository = LibraryRepository(
-            context = applicationContext,
-            songDao = database.songDao(),
-        )
-        val playlistRepository = PlaylistRepository(
-            playlistDao = database.playlistDao(),
-        )
-        val playbackSessionRepository = PlaybackSessionRepository(
-            playbackSnapshotDao = database.playbackSnapshotDao(),
-        )
+        val libraryRepository =
+            LibraryRepository(
+                context = applicationContext,
+                songDao = database.songDao(),
+            )
+        val playlistRepository =
+            PlaylistRepository(
+                playlistDao = database.playlistDao(),
+            )
+        val playbackSessionRepository =
+            PlaybackSessionRepository(
+                playbackSnapshotDao = database.playbackSnapshotDao(),
+            )
 
         val preferences = AppPreferences(applicationContext)
 
-        appContainer = AppContainer(
-            libraryRepository = libraryRepository,
-            playlistRepository = playlistRepository,
-            playbackManager = PlaybackManager(
-                context = applicationContext,
+        appContainer =
+            AppContainer(
                 libraryRepository = libraryRepository,
-                sessionRepository = playbackSessionRepository,
+                playlistRepository = playlistRepository,
+                playbackManager =
+                    PlaybackManager(
+                        context = applicationContext,
+                        libraryRepository = libraryRepository,
+                        sessionRepository = playbackSessionRepository,
+                        preferences = preferences,
+                    ),
                 preferences = preferences,
-            ),
-            preferences = preferences,
-        )
+            )
 
         // Watch MediaStore for new audio files; auto-rescan when changes settle so the user
         // never has to tap a button after dropping music onto the phone.
@@ -74,12 +80,13 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
      * runtime is only on the classpath when the test APK is loaded; in production builds the
      * lookup throws ClassNotFoundException. Cheap, no setup ceremony, no build-config plumbing.
      */
-    private fun isInstrumentationRunning(): Boolean = try {
-        Class.forName("androidx.test.platform.app.InstrumentationRegistry")
-        true
-    } catch (e: ClassNotFoundException) {
-        false
-    }
+    private fun isInstrumentationRunning(): Boolean =
+        try {
+            Class.forName("androidx.test.platform.app.InstrumentationRegistry")
+            true
+        } catch (e: ClassNotFoundException) {
+            false
+        }
 
     /**
      * Album art is small, immutable per song, and reused across many list rows. Default Coil

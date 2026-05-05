@@ -1,6 +1,5 @@
 package com.migsmusic.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -80,43 +79,50 @@ internal fun PlayerRoute(
     var dragCommitted by remember { mutableStateOf(false) }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(UiTestTags.PlayerScreen)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = {
-                        dragX = 0f; dragY = 0f; dragCommitted = false
-                    },
-                    onDragEnd = {
-                        dragX = 0f; dragY = 0f; dragCommitted = false
-                    },
-                    onDragCancel = {
-                        dragX = 0f; dragY = 0f; dragCommitted = false
-                    },
-                    onDrag = { _, drag ->
-                        if (dragCommitted) return@detectDragGestures
-                        dragX += drag.x
-                        dragY += drag.y
-                        // Pick whichever axis crossed its threshold first.
-                        when {
-                            dragY >= dismissThresholdPx && dragY > kotlin.math.abs(dragX) -> {
-                                dragCommitted = true
-                                onDismiss()
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .testTag(UiTestTags.PlayerScreen)
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = {
+                            dragX = 0f
+                            dragY = 0f
+                            dragCommitted = false
+                        },
+                        onDragEnd = {
+                            dragX = 0f
+                            dragY = 0f
+                            dragCommitted = false
+                        },
+                        onDragCancel = {
+                            dragX = 0f
+                            dragY = 0f
+                            dragCommitted = false
+                        },
+                        onDrag = { _, drag ->
+                            if (dragCommitted) return@detectDragGestures
+                            dragX += drag.x
+                            dragY += drag.y
+                            // Pick whichever axis crossed its threshold first.
+                            when {
+                                dragY >= dismissThresholdPx && dragY > kotlin.math.abs(dragX) -> {
+                                    dragCommitted = true
+                                    onDismiss()
+                                }
+                                dragX <= -skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
+                                    dragCommitted = true
+                                    playerViewModel.skipToNext()
+                                }
+                                dragX >= skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
+                                    dragCommitted = true
+                                    playerViewModel.skipToPrevious()
+                                }
                             }
-                            dragX <= -skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
-                                dragCommitted = true
-                                playerViewModel.skipToNext()
-                            }
-                            dragX >= skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
-                                dragCommitted = true
-                                playerViewModel.skipToPrevious()
-                            }
-                        }
-                    },
-                )
-            }
-            .padding(24.dp),
+                        },
+                    )
+                }
+                .padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (currentSong == null) {
@@ -134,10 +140,11 @@ internal fun PlayerRoute(
         ) {
             AlbumArtImage(
                 uri = currentSong.albumArtUri,
-                modifier = Modifier
-                    .size(220.dp)
-                    .clip(MaterialTheme.shapes.large)
-                    .testTag(UiTestTags.PlayerAlbumArt),
+                modifier =
+                    Modifier
+                        .size(220.dp)
+                        .clip(MaterialTheme.shapes.large)
+                        .testTag(UiTestTags.PlayerAlbumArt),
             )
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -160,9 +167,10 @@ internal fun PlayerRoute(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .testTag(UiTestTags.PlayerArtistLink)
-                            .clickable { onOpenArtist(currentSong.artist) },
+                        modifier =
+                            Modifier
+                                .testTag(UiTestTags.PlayerArtistLink)
+                                .clickable { onOpenArtist(currentSong.artist) },
                     )
                     Text(
                         text = "•",
@@ -175,10 +183,11 @@ internal fun PlayerRoute(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .testTag(UiTestTags.PlayerAlbumLink)
-                            .clickable { onOpenAlbum(currentSong.album, currentSong.artist) },
+                        modifier =
+                            Modifier
+                                .weight(1f, fill = false)
+                                .testTag(UiTestTags.PlayerAlbumLink)
+                                .clickable { onOpenAlbum(currentSong.album, currentSong.artist) },
                     )
                 }
             }
@@ -274,11 +283,12 @@ internal fun MiniPlayer(
 ) {
     val current = playbackState.currentSong ?: return
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .testTag(UiTestTags.MiniPlayer)
-            .clickable(onClick = onOpenPlayer),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag(UiTestTags.MiniPlayer)
+                .clickable(onClick = onOpenPlayer),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         // Thin progress indicator at the top — observes the position flow in isolation so
@@ -288,16 +298,18 @@ internal fun MiniPlayer(
             durationMs = playbackState.durationMs.takeIf { it > 0 } ?: current.durationMs,
         )
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AlbumArtImage(
                 uri = current.albumArtUri,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(MaterialTheme.shapes.small),
+                modifier =
+                    Modifier
+                        .size(44.dp)
+                        .clip(MaterialTheme.shapes.small),
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -353,22 +365,26 @@ internal fun MiniPlayerProgressBar(
     val trackColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val fillColor = MaterialTheme.colorScheme.primary
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(2.dp)
-            .testTag(UiTestTags.MiniPlayerProgress)
-            .drawBehind {
-                drawRect(color = trackColor)
-                val progress = if (durationMs > 0) {
-                    (position.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-                } else 0f
-                if (progress > 0f) {
-                    drawRect(
-                        color = fillColor,
-                        topLeft = Offset.Zero,
-                        size = Size(width = size.width * progress, height = size.height),
-                    )
-                }
-            },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .testTag(UiTestTags.MiniPlayerProgress)
+                .drawBehind {
+                    drawRect(color = trackColor)
+                    val progress =
+                        if (durationMs > 0) {
+                            (position.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                        } else {
+                            0f
+                        }
+                    if (progress > 0f) {
+                        drawRect(
+                            color = fillColor,
+                            topLeft = Offset.Zero,
+                            size = Size(width = size.width * progress, height = size.height),
+                        )
+                    }
+                },
     )
 }

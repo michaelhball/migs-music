@@ -21,7 +21,7 @@ interface PlaylistDao {
         LEFT JOIN playlist_songs ON playlists.id = playlist_songs.playlistId
         GROUP BY playlists.id, playlists.name
         ORDER BY LOWER(playlists.name)
-        """
+        """,
     )
     fun observePlaylists(): Flow<List<PlaylistSummary>>
 
@@ -41,7 +41,7 @@ interface PlaylistDao {
         INNER JOIN songs ON songs.id = playlist_songs.songId
         WHERE playlist_songs.playlistId = :playlistId
         ORDER BY playlist_songs.position
-        """
+        """,
     )
     fun observePlaylistSongs(playlistId: Long): Flow<List<PlaylistSong>>
 
@@ -83,21 +83,32 @@ interface PlaylistDao {
         """
         UPDATE playlist_songs SET position = position - 1
         WHERE playlistId = :playlistId AND position BETWEEN :minPos AND :maxPos
-        """
+        """,
     )
-    suspend fun shiftPositionsDown(playlistId: Long, minPos: Int, maxPos: Int)
+    suspend fun shiftPositionsDown(
+        playlistId: Long,
+        minPos: Int,
+        maxPos: Int,
+    )
 
     /** Shift every row in `[minPos, maxPos]` up by 1 (for "move up" reorders). */
     @Query(
         """
         UPDATE playlist_songs SET position = position + 1
         WHERE playlistId = :playlistId AND position BETWEEN :minPos AND :maxPos
-        """
+        """,
     )
-    suspend fun shiftPositionsUp(playlistId: Long, minPos: Int, maxPos: Int)
+    suspend fun shiftPositionsUp(
+        playlistId: Long,
+        minPos: Int,
+        maxPos: Int,
+    )
 
     @Query("UPDATE playlist_songs SET position = :position WHERE playlistItemId = :playlistItemId")
-    suspend fun setPlaylistSongPosition(playlistItemId: Long, position: Int)
+    suspend fun setPlaylistSongPosition(
+        playlistItemId: Long,
+        position: Int,
+    )
 
     /**
      * Atomic single-row reorder: shifts the rows in the affected range and re-positions the
@@ -120,7 +131,10 @@ interface PlaylistDao {
     }
 
     @Transaction
-    suspend fun replacePlaylistOrder(playlistId: Long, items: List<PlaylistSongEntity>) {
+    suspend fun replacePlaylistOrder(
+        playlistId: Long,
+        items: List<PlaylistSongEntity>,
+    ) {
         clearPlaylistSongs(playlistId)
         items.forEach { insertPlaylistSong(it.copy(playlistItemId = 0, playlistId = playlistId)) }
     }

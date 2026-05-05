@@ -14,13 +14,14 @@ import androidx.test.rule.GrantPermissionRule
 import com.migsmusic.ui.UiTestTags
 import kotlinx.coroutines.runBlocking
 
-internal fun mediaPermissionRule(): GrantPermissionRule = GrantPermissionRule.grant(
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_AUDIO
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-)
+internal fun mediaPermissionRule(): GrantPermissionRule =
+    GrantPermissionRule.grant(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        },
+    )
 
 /**
  * Wipes the singleton PlaybackManager's state — queue, player, audio focus, caches, persisted
@@ -31,18 +32,17 @@ internal fun mediaPermissionRule(): GrantPermissionRule = GrantPermissionRule.gr
  * dominant source of cross-test flakiness.
  */
 internal fun resetPlaybackForTest() {
-    val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
-        as MigsMusicApplication
+    val app =
+        InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+            as MigsMusicApplication
     runBlocking {
         app.appContainer.playbackManager.resetForTest()
     }
 }
 
-internal fun SemanticsNodeInteractionsProvider.hasNode(tag: String): Boolean =
-    onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+internal fun SemanticsNodeInteractionsProvider.hasNode(tag: String): Boolean = onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
-internal fun SemanticsNodeInteractionsProvider.nodeCount(tag: String): Int =
-    onAllNodesWithTag(tag).fetchSemanticsNodes().size
+internal fun SemanticsNodeInteractionsProvider.nodeCount(tag: String): Int = onAllNodesWithTag(tag).fetchSemanticsNodes().size
 
 internal fun collectTexts(node: SemanticsNode): List<String> {
     val out = mutableListOf<String>()
@@ -54,7 +54,10 @@ internal fun collectTexts(node: SemanticsNode): List<String> {
     return out
 }
 
-internal fun SemanticsNodeInteractionsProvider.titleOfRow(tag: String, index: Int): String? {
+internal fun SemanticsNodeInteractionsProvider.titleOfRow(
+    tag: String,
+    index: Int,
+): String? {
     val nodes = onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes()
     if (index !in nodes.indices) return null
     return collectTexts(nodes[index]).firstOrNull { it.isNotBlank() }
@@ -66,7 +69,7 @@ internal fun SemanticsNodeInteractionsProvider.firstTextUnder(tag: String): Stri
 }
 
 internal fun <A : androidx.activity.ComponentActivity> AndroidComposeTestRule<ActivityScenarioRule<A>, A>.waitForLibraryReady(
-    timeoutMillis: Long = 30_000L
+    timeoutMillis: Long = 30_000L,
 ) {
     waitUntil(timeoutMillis = timeoutMillis) {
         hasNode(UiTestTags.PermissionButton) ||
@@ -89,8 +92,9 @@ internal fun <A : androidx.activity.ComponentActivity> AndroidComposeTestRule<Ac
 ) {
     val deadline = System.currentTimeMillis() + timeoutMillis
     while (System.currentTimeMillis() < deadline) {
-        val statusNodes = onAllNodesWithTag(UiTestTags.ScanStatus, useUnmergedTree = true)
-            .fetchSemanticsNodes()
+        val statusNodes =
+            onAllNodesWithTag(UiTestTags.ScanStatus, useUnmergedTree = true)
+                .fetchSemanticsNodes()
         val statusText = statusNodes.flatMap { collectTexts(it) }.firstOrNull().orEmpty()
         val isScanning = statusText.contains("Scanning")
         val hasIndexed = statusText.startsWith("Indexed")
@@ -105,8 +109,9 @@ internal fun <A : androidx.activity.ComponentActivity> AndroidComposeTestRule<Ac
         Thread.sleep(250)
     }
     val finalRowCount = onAllNodesWithTag(UiTestTags.SongRow).fetchSemanticsNodes().size
-    val statusNodes = onAllNodesWithTag(UiTestTags.ScanStatus, useUnmergedTree = true)
-        .fetchSemanticsNodes()
+    val statusNodes =
+        onAllNodesWithTag(UiTestTags.ScanStatus, useUnmergedTree = true)
+            .fetchSemanticsNodes()
     val statusText = statusNodes.flatMap { collectTexts(it) }.firstOrNull()
     error("Library scan did not settle: rows=$finalRowCount status='$statusText' after ${timeoutMillis}ms")
 }

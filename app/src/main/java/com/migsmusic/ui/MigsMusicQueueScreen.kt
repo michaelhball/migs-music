@@ -47,11 +47,12 @@ internal fun QueueRoute(
             initialValue = "",
             onDismiss = { saveDialogVisible = false },
             onConfirm = { name ->
-                val ids = buildList {
-                    addAll(state.history.map { it.songId })
-                    state.currentSong?.let { add(it.songId) }
-                    addAll(state.upcoming.map { it.songId })
-                }
+                val ids =
+                    buildList {
+                        addAll(state.history.map { it.songId })
+                        state.currentSong?.let { add(it.songId) }
+                        addAll(state.upcoming.map { it.songId })
+                    }
                 playlistsViewModel.createPlaylistFromSongs(name, ids)
                 saveDialogVisible = false
             },
@@ -67,13 +68,14 @@ internal fun QueueRoute(
     val upcomingStart = headerCount + historyCount + currentCount + upNextHeaderCount
     val upcoming = state.upcoming
 
-    val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val fromIdx = from.index - upcomingStart
-        val toIdx = to.index - upcomingStart
-        if (fromIdx in upcoming.indices && toIdx in upcoming.indices && fromIdx != toIdx) {
-            playerViewModel.moveUpcoming(upcoming[fromIdx].entryId, toIdx)
+    val reorderState =
+        rememberReorderableLazyListState(lazyListState) { from, to ->
+            val fromIdx = from.index - upcomingStart
+            val toIdx = to.index - upcomingStart
+            if (fromIdx in upcoming.indices && toIdx in upcoming.indices && fromIdx != toIdx) {
+                playerViewModel.moveUpcoming(upcoming[fromIdx].entryId, toIdx)
+            }
         }
-    }
 
     // Auto-scroll to the Current row once on entry. Re-running on every entryId change
     // (e.g. rapid skip-next) re-enters scrollToItem during measurement → layout-cycle crash.
@@ -92,9 +94,10 @@ internal fun QueueRoute(
 
     LazyColumn(
         state = lazyListState,
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(UiTestTags.QueueScreen),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .testTag(UiTestTags.QueueScreen),
     ) {
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
@@ -128,10 +131,12 @@ internal fun QueueRoute(
                 }
                 if (state.upcoming.isNotEmpty()) {
                     Text(
-                        text = "Up next: " + formatCountAndDuration(
-                            state.upcoming.size,
-                            state.upcoming.sumOf { it.durationMs },
-                        ),
+                        text =
+                            "Up next: " +
+                                formatCountAndDuration(
+                                    state.upcoming.size,
+                                    state.upcoming.sumOf { it.durationMs },
+                                ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -175,16 +180,18 @@ internal fun QueueRoute(
                 val lastIndex = state.upcoming.lastIndex
                 val onJump = remember(song.entryId) { { playerViewModel.jumpToEntry(song.entryId) } }
                 val onRemove = remember(song.entryId) { { playerViewModel.removeUpcoming(song.entryId) } }
-                val onMoveUp = remember(song.entryId, index) {
-                    {
-                        if (index > 0) playerViewModel.moveUpcoming(song.entryId, index - 1)
+                val onMoveUp =
+                    remember(song.entryId, index) {
+                        {
+                            if (index > 0) playerViewModel.moveUpcoming(song.entryId, index - 1)
+                        }
                     }
-                }
-                val onMoveDown = remember(song.entryId, index, lastIndex) {
-                    {
-                        if (index < lastIndex) playerViewModel.moveUpcoming(song.entryId, index + 1)
+                val onMoveDown =
+                    remember(song.entryId, index, lastIndex) {
+                        {
+                            if (index < lastIndex) playerViewModel.moveUpcoming(song.entryId, index + 1)
+                        }
                     }
-                }
                 val rowTag = remember(index) { UiTestTags.queueUpcomingRow(index) }
                 ReorderableItem(reorderState, key = song.entryId) { isDragging ->
                     // Note: SwipeToDismissBox + ReorderableItem nested together causes a Compose
@@ -220,20 +227,22 @@ internal fun QueueRow(
     rowTag: String? = null,
     dragHandleModifier: Modifier? = null,
 ) {
-    val baseModifier = if (rowTag != null) {
-        Modifier.testTag(rowTag)
-    } else {
-        Modifier
-    }
+    val baseModifier =
+        if (rowTag != null) {
+            Modifier.testTag(rowTag)
+        } else {
+            Modifier
+        }
     ListRow(
         title = song.title,
         subtitle = song.artist,
         modifier = baseModifier.clickable(onClick = onJump),
-        containerColor = if (highlight) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+        containerColor =
+            if (highlight) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
         actions = {
             if (onMoveUp != null) {
                 SmallActionButton(
@@ -263,9 +272,10 @@ internal fun QueueRow(
                 Icon(
                     Icons.Default.DragHandle,
                     contentDescription = "Drag to reorder",
-                    modifier = dragHandleModifier
-                        .testTag(UiTestTags.QueueRowDragHandle)
-                        .padding(8.dp),
+                    modifier =
+                        dragHandleModifier
+                            .testTag(UiTestTags.QueueRowDragHandle)
+                            .padding(8.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

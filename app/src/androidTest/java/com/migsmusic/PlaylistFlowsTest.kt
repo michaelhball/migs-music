@@ -64,16 +64,18 @@ class PlaylistFlowsTest {
         composeRule.waitForLibraryScanSettled(minSongs = 2)
 
         // Seed a playlist with 2 songs via the repository (avoiding flaky dialog text input).
-        val songIds = runBlocking {
-            app.appContainer.libraryRepository.observeAllSongs().first().take(2).map { it.id }
-        }
+        val songIds =
+            runBlocking {
+                app.appContainer.libraryRepository.observeAllSongs().first().take(2).map { it.id }
+            }
         check(songIds.size == 2) { "Expected 2 song IDs from library, got ${songIds.size}" }
 
-        val playlistId = runBlocking {
-            val id = app.appContainer.playlistRepository.createPlaylist(testPlaylistName)
-            songIds.forEach { app.appContainer.playlistRepository.addSong(id, it) }
-            id
-        }
+        val playlistId =
+            runBlocking {
+                val id = app.appContainer.playlistRepository.createPlaylist(testPlaylistName)
+                songIds.forEach { app.appContainer.playlistRepository.addSong(id, it) }
+                id
+            }
 
         // 1) Switch to Playlists tab; verify the playlist appears.
         composeRule.onNodeWithTag(UiTestTags.PlaylistsTab).performClick()
@@ -117,9 +119,10 @@ class PlaylistFlowsTest {
                 composeRule.onAllNodesWithText(testPlaylistName).fetchSemanticsNodes().isNotEmpty()
         }
         val rowNodes = composeRule.onAllNodesWithTag(UiTestTags.PlaylistRow).fetchSemanticsNodes()
-        val targetIndex = rowNodes.indexOfFirst { node ->
-            collectTexts(node).any { it == testPlaylistName }
-        }
+        val targetIndex =
+            rowNodes.indexOfFirst { node ->
+                collectTexts(node).any { it == testPlaylistName }
+            }
         require(targetIndex >= 0) { "Test playlist row not found for delete" }
         composeRule.onAllNodesWithTag(UiTestTags.PlaylistDeleteButton)[targetIndex].performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {

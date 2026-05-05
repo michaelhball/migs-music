@@ -21,7 +21,7 @@ class QueueEngineTest {
 
         assertEquals(
             listOf(10L, 30L, 20L, 3L, 4L, 5L),
-            updated?.upcoming?.map { it.songId }
+            updated?.upcoming?.map { it.songId },
         )
     }
 
@@ -55,7 +55,7 @@ class QueueEngineTest {
 
         assertEquals(
             listOf(20L, 2L, 10L, 3L, 4L),
-            state?.upcoming?.map { it.songId }
+            state?.upcoming?.map { it.songId },
         )
     }
 
@@ -70,7 +70,7 @@ class QueueEngineTest {
 
         assertEquals(
             listOf(20L, 10L, 2L, 3L, 4L),
-            state?.upcoming?.map { it.songId }
+            state?.upcoming?.map { it.songId },
         )
     }
 
@@ -102,13 +102,14 @@ class QueueEngineTest {
 
     @Test
     fun sanitizePromotesFirstValidUpcomingWhenCurrentDisappears() {
-        val state = QueueState(
-            history = listOf(QueueEntry("h1", 1)),
-            currentItem = QueueEntry("c1", 2),
-            nextItems = listOf(QueueEntry("n1", 3)),
-            laterItems = listOf(QueueEntry("l1", 4)),
-            remainingContextItems = listOf(QueueEntry("r1", 5)),
-        )
+        val state =
+            QueueState(
+                history = listOf(QueueEntry("h1", 1)),
+                currentItem = QueueEntry("c1", 2),
+                nextItems = listOf(QueueEntry("n1", 3)),
+                laterItems = listOf(QueueEntry("l1", 4)),
+                remainingContextItems = listOf(QueueEntry("r1", 5)),
+            )
 
         val sanitized = state.sanitize(setOf(1L, 3L, 4L, 5L))
 
@@ -119,13 +120,14 @@ class QueueEngineTest {
 
     @Test
     fun sanitizeReturnsNullWhenNothingIsPlayable() {
-        val state = QueueState(
-            history = listOf(QueueEntry("h1", 1)),
-            currentItem = QueueEntry("c1", 2),
-            nextItems = listOf(QueueEntry("n1", 3)),
-            laterItems = emptyList(),
-            remainingContextItems = emptyList(),
-        )
+        val state =
+            QueueState(
+                history = listOf(QueueEntry("h1", 1)),
+                currentItem = QueueEntry("c1", 2),
+                nextItems = listOf(QueueEntry("n1", 3)),
+                laterItems = emptyList(),
+                remainingContextItems = emptyList(),
+            )
 
         assertNull(state.sanitize(emptySet()))
     }

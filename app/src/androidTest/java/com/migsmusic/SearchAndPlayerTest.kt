@@ -54,9 +54,11 @@ class SearchAndPlayerTest {
         // Verify the matching first row contains the needle (case-insensitive)
         val titleAfter = composeRule.titleOfRow(UiTestTags.SongRow, 0)
         require(!titleAfter.isNullOrBlank()) { "Search returned empty title at index 0" }
-        check(titleAfter.contains(needle, ignoreCase = true) ||
-              titleAfter.contains(needle.lowercase()) ||
-              titleAfter.contains(needle.uppercase())) {
+        check(
+            titleAfter.contains(needle, ignoreCase = true) ||
+                titleAfter.contains(needle.lowercase()) ||
+                titleAfter.contains(needle.uppercase()),
+        ) {
             "Top search result '$titleAfter' does not contain query '$needle'"
         }
     }

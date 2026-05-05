@@ -12,8 +12,7 @@ class PlaylistRepository(
 ) {
     fun observePlaylists(): Flow<List<PlaylistSummary>> = playlistDao.observePlaylists()
 
-    fun observePlaylistSongs(playlistId: Long): Flow<List<PlaylistSong>> =
-        playlistDao.observePlaylistSongs(playlistId)
+    fun observePlaylistSongs(playlistId: Long): Flow<List<PlaylistSong>> = playlistDao.observePlaylistSongs(playlistId)
 
     suspend fun createPlaylist(name: String): Long {
         val now = System.currentTimeMillis()
@@ -22,17 +21,20 @@ class PlaylistRepository(
                 name = name.trim(),
                 createdAtMillis = now,
                 updatedAtMillis = now,
-            )
+            ),
         )
     }
 
-    suspend fun renamePlaylist(playlistId: Long, name: String) {
+    suspend fun renamePlaylist(
+        playlistId: Long,
+        name: String,
+    ) {
         val playlist = playlistDao.getPlaylist(playlistId) ?: return
         playlistDao.updatePlaylist(
             playlist.copy(
                 name = name.trim(),
                 updatedAtMillis = System.currentTimeMillis(),
-            )
+            ),
         )
     }
 
@@ -40,7 +42,10 @@ class PlaylistRepository(
         playlistDao.deletePlaylist(playlistId)
     }
 
-    suspend fun addSong(playlistId: Long, songId: Long) {
+    suspend fun addSong(
+        playlistId: Long,
+        songId: Long,
+    ) {
         val nextPosition = playlistDao.getLastSongPosition(playlistId) + 1
         playlistDao.insertPlaylistSong(
             PlaylistSongEntity(
@@ -48,7 +53,7 @@ class PlaylistRepository(
                 songId = songId,
                 position = nextPosition,
                 addedAtMillis = System.currentTimeMillis(),
-            )
+            ),
         )
     }
 
@@ -58,7 +63,11 @@ class PlaylistRepository(
         normalizePlaylistPositions(item.playlistId)
     }
 
-    suspend fun moveSong(playlistId: Long, fromIndex: Int, toIndex: Int) {
+    suspend fun moveSong(
+        playlistId: Long,
+        fromIndex: Int,
+        toIndex: Int,
+    ) {
         val items = playlistDao.getPlaylistSongEntities(playlistId)
         if (fromIndex !in items.indices) return
         val destination = toIndex.coerceIn(0, items.lastIndex)
@@ -77,8 +86,9 @@ class PlaylistRepository(
     }
 
     private suspend fun normalizePlaylistPositions(playlistId: Long) {
-        val normalized = playlistDao.getPlaylistSongEntities(playlistId)
-            .mapIndexed { index, item -> item.copy(position = index) }
+        val normalized =
+            playlistDao.getPlaylistSongEntities(playlistId)
+                .mapIndexed { index, item -> item.copy(position = index) }
         if (normalized.isNotEmpty()) {
             playlistDao.updatePlaylistSongs(normalized)
         }

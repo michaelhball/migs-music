@@ -2,7 +2,6 @@ package com.migsmusic.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,9 +58,10 @@ internal fun SongsRoute(
     val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(UiTestTags.SongsScreen),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .testTag(UiTestTags.SongsScreen),
     ) {
         OutlinedTextField(
             value = query,
@@ -69,10 +69,11 @@ internal fun SongsRoute(
                 query = it
                 libraryViewModel.updateSearchQuery(it)
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .testTag(UiTestTags.SearchField),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag(UiTestTags.SearchField),
             singleLine = true,
             label = { Text("Search songs") },
             trailingIcon = {
@@ -90,9 +91,10 @@ internal fun SongsRoute(
             },
         )
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
@@ -117,26 +119,29 @@ internal fun SongsRoute(
         if (scanState.errorMessage != null) {
             Text(
                 text = scanState.errorMessage.orEmpty(),
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .testTag(UiTestTags.ScanStatus),
+                modifier =
+                    Modifier
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .testTag(UiTestTags.ScanStatus),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
         }
         when {
             songs.isEmpty() && query.isNotBlank() -> EmptyState("No songs match \"$query\"")
-            songs.isEmpty() -> EmptyState(
-                "Your library is empty.\nCopy music to your phone — it'll appear here automatically."
-            )
-            else -> SongList(
-                songs = songs,
-                currentSongId = currentSongId,
-                onPlaySong = { index -> libraryViewModel.playSongs(songs, index, shuffle = false) },
-                onPlayNext = { libraryViewModel.playNext(it) },
-                onPlayLater = { libraryViewModel.playLater(it) },
-                onAddToPlaylist = openAddToPlaylist,
-            )
+            songs.isEmpty() ->
+                EmptyState(
+                    "Your library is empty.\nCopy music to your phone — it'll appear here automatically.",
+                )
+            else ->
+                SongList(
+                    songs = songs,
+                    currentSongId = currentSongId,
+                    onPlaySong = { index -> libraryViewModel.playSongs(songs, index, shuffle = false) },
+                    onPlayNext = { libraryViewModel.playNext(it) },
+                    onPlayLater = { libraryViewModel.playLater(it) },
+                    onAddToPlaylist = openAddToPlaylist,
+                )
         }
     }
 }
@@ -169,9 +174,10 @@ internal fun SongList(
     }
     LazyColumn(
         state = lazyListState,
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(UiTestTags.SongList),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .testTag(UiTestTags.SongList),
     ) {
         itemsIndexed(songs, key = { _, item -> item.id }) { index, song ->
             // Memoize per-row lambdas so a state change at the parent (e.g. currentSongId
@@ -209,24 +215,27 @@ internal fun SongRow(
         ListRow(
             title = song.title,
             subtitle = "${song.artist} • ${song.album}",
-            modifier = Modifier
-                .testTag(UiTestTags.SongRow)
-                .combinedClickable(
-                    onClick = onPlay,
-                    onLongClick = { menuOpen = true },
-                ),
-            containerColor = if (isCurrent) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surface
-            },
+            modifier =
+                Modifier
+                    .testTag(UiTestTags.SongRow)
+                    .combinedClickable(
+                        onClick = onPlay,
+                        onLongClick = { menuOpen = true },
+                    ),
+            containerColor =
+                if (isCurrent) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
             titleFontWeight = if (isCurrent) FontWeight.Bold else null,
             leading = {
                 AlbumArtImage(
                     uri = song.albumArtUri,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(MaterialTheme.shapes.small),
+                    modifier =
+                        Modifier
+                            .size(40.dp)
+                            .clip(MaterialTheme.shapes.small),
                 )
             },
             actions = {
@@ -245,17 +254,26 @@ internal fun SongRow(
             DropdownMenuItem(
                 modifier = Modifier.testTag(UiTestTags.SongActionNext),
                 text = { Text("Play next") },
-                onClick = { menuOpen = false; onPlayNext() },
+                onClick = {
+                    menuOpen = false
+                    onPlayNext()
+                },
             )
             DropdownMenuItem(
                 modifier = Modifier.testTag(UiTestTags.SongActionLater),
                 text = { Text("Play later") },
-                onClick = { menuOpen = false; onPlayLater() },
+                onClick = {
+                    menuOpen = false
+                    onPlayLater()
+                },
             )
             DropdownMenuItem(
                 modifier = Modifier.testTag(UiTestTags.SongActionAdd),
                 text = { Text("Add to playlist…") },
-                onClick = { menuOpen = false; onAddToPlaylist() },
+                onClick = {
+                    menuOpen = false
+                    onAddToPlaylist()
+                },
             )
         }
     }
