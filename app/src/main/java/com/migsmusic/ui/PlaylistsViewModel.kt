@@ -1,16 +1,21 @@
 package com.migsmusic.ui
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.migsmusic.AppPreferences
 import com.migsmusic.data.local.model.PlaylistSong
 import com.migsmusic.data.local.model.PlaylistSummary
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackManager
+import com.migsmusic.playlistimport.DiscoveredM3u
 import com.migsmusic.playlistimport.M3uEntry
 import com.migsmusic.playlistimport.MatchedSong
 import com.migsmusic.playlistimport.matchM3uEntries
 import com.migsmusic.playlistimport.parseM3u
+import com.migsmusic.playlistimport.scanForM3uFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,6 +40,7 @@ class PlaylistsViewModel(
     private val playlistRepository: PlaylistRepository,
     private val libraryRepository: LibraryRepository,
     private val playbackManager: PlaybackManager,
+    private val preferences: AppPreferences,
 ) : ViewModel() {
     // Lazily: starts on first subscribe, then keeps the value cached for the VM's lifetime.
     // Using WhileSubscribed restarted from `emptyList` on every Playlists-tab navigation, which
@@ -175,6 +181,62 @@ class PlaylistsViewModel(
         viewModelScope.launch {
             playlistRepository.createPlaylistWithSongs(name, songIds)
             _importStaging.value = null
+        }
+    }
+
+    // ---- Auto-detected M3U files in the user's Music folder ----
+
+    private val _musicFolderUri = MutableStateFlow(preferences.musicFolderTreeUri?.let(Uri::parse))
+    val musicFolderUri: StateFlow<Uri?> = _musicFolderUri.asStateFlow()
+
+    private val _availableM3uFiles = MutableStateFlow<List<DiscoveredM3u>>(emptyList())
+    val availableM3uFiles: StateFlow<List<DiscoveredM3u>> = _availableM3uFiles.asStateFlow()
+
+    /**
+     * Persists the SAF tree URI the user just granted via [ActivityResultContracts.OpenDocumentTree],
+     * after the caller has already taken a persistable read permission via the ContentResolver.
+     */
+    fun setMusicFolderUri(uri: Uri?) {
+        preferences.musicFolderTreeUri = uri?.toString()
+        _musicFolderUri.value = uri
+    }
+
+    /**
+     * Scans the SAF tree at [treeUri] for `.m3u` / `.m3u8` files and updates
+     * [availableM3uFiles]. The Playlists screen calls this on entry. No-op when [treeUri]
+     * is null (user hasn't granted folder access yet) — clears the list to keep state honest.
+     */
+    fun refreshAvailableM3uFiles(
+        context: Context,
+        treeUri: Uri?,
+    ) {
+        if (treeUri == null) {
+            _availableM3uFiles.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            _availableM3uFiles.value = scanForM3uFiles(context, treeUri)
+        }
+    }
+
+    /**
+     * Reads [uri] (a content URI, typically from [DiscoveredM3u.uri]), parses + matches it,
+     * and stages the result for the import dialog to render.
+     */
+    fun importDiscoveredM3u(
+        context: Context,
+        uri: Uri,
+        defaultName: String,
+    ) {
+        viewModelScope.launch {
+            val content =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                    }.getOrNull().orEmpty()
+                }
+            if (content.isBlank()) return@launch
+            previewM3uImport(content, defaultName)
         }
     }
 }

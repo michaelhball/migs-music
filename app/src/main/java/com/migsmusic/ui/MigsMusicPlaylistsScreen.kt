@@ -1,5 +1,6 @@
 package com.migsmusic.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +64,8 @@ internal fun PlaylistsRoute(
 ) {
     val playlists by playlistsViewModel.playlists.collectAsStateWithLifecycle()
     val importStaging by playlistsViewModel.importStaging.collectAsStateWithLifecycle()
+    val musicFolderUri by playlistsViewModel.musicFolderUri.collectAsStateWithLifecycle()
+    val availableM3uFiles by playlistsViewModel.availableM3uFiles.collectAsStateWithLifecycle()
     var showDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableLongStateOf(-1L) }
     var overflowOpen by remember { mutableStateOf(false) }
@@ -80,6 +84,26 @@ internal fun PlaylistsRoute(
             val defaultName = filenameFromUri(uri).removeSuffix(".m3u").removeSuffix(".m3u8")
             playlistsViewModel.previewM3uImport(content, defaultName)
         }
+
+    val folderPickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            // SAF grants are per-launch by default. takePersistableUriPermission keeps the
+            // grant across process restarts so we don't have to ask again.
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            playlistsViewModel.setMusicFolderUri(uri)
+        }
+
+    // Re-scan whenever the granted folder changes (initial load, fresh grant) and on every
+    // entry to the Playlists tab. The ViewModel will no-op if the URI is null.
+    LaunchedEffect(musicFolderUri) {
+        playlistsViewModel.refreshAvailableM3uFiles(context, musicFolderUri)
+    }
 
     if (showDialog) {
         NameDialog(
@@ -169,6 +193,27 @@ internal fun PlaylistsRoute(
                         )
                     }
                 }
+            }
+            // Auto-detected M3U files in the user's Music folder. Either:
+            // - Folder not yet picked: show a one-time setup banner.
+            // - Folder picked + scan found new M3Us: show "Available to import" section.
+            // - Folder picked + nothing new: show nothing here (the user has the overflow ⋮
+            //   "Import from M3U file" entry as a manual fallback).
+            if (musicFolderUri == null) {
+                M3uFolderSetupBanner(
+                    onPickFolder = { folderPickerLauncher.launch(null) },
+                )
+            } else if (availableM3uFiles.isNotEmpty()) {
+                AvailableM3uList(
+                    files = availableM3uFiles,
+                    onImport = { discovered ->
+                        playlistsViewModel.importDiscoveredM3u(
+                            context = context,
+                            uri = discovered.uri,
+                            defaultName = discovered.displayName.removeSuffix(".m3u").removeSuffix(".m3u8"),
+                        )
+                    },
+                )
             }
             if (playlists.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -314,6 +359,83 @@ private fun M3uImportDialog(
 private fun filenameFromUri(uri: Uri): String {
     val raw = uri.lastPathSegment.orEmpty().substringAfterLast('/').substringAfterLast(':')
     return raw.ifBlank { "Imported playlist" }
+}
+
+/**
+ * One-time prompt shown when no Music folder URI has been granted yet. Tapping the button
+ * opens the SAF folder picker; once the user picks a folder, the banner disappears and the
+ * "Available imports" section takes its place.
+ */
+@Composable
+private fun M3uFolderSetupBanner(onPickFolder: () -> Unit) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag(UiTestTags.M3uFolderSetupBanner),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "Auto-detect playlists",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                text = "Pick your Music folder once, and any .m3u files in it will appear here for one-tap import.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = onPickFolder,
+                modifier = Modifier.testTag(UiTestTags.M3uPickFolderButton),
+            ) {
+                Text("Pick Music folder")
+            }
+        }
+    }
+}
+
+/**
+ * The list of `.m3u` / `.m3u8` files found under the granted Music folder. One row per file;
+ * tapping Import triggers the same dialog flow as the manual SAF picker.
+ */
+@Composable
+private fun AvailableM3uList(
+    files: List<com.migsmusic.playlistimport.DiscoveredM3u>,
+    onImport: (com.migsmusic.playlistimport.DiscoveredM3u) -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .testTag(UiTestTags.M3uAvailableSection),
+    ) {
+        SectionHeader("Available to import")
+        files.forEach { file ->
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .testTag(UiTestTags.M3uAvailableRow),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = file.displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = { onImport(file) },
+                    modifier = Modifier.testTag(UiTestTags.M3uAvailableImportButton),
+                ) {
+                    Text("Import")
+                }
+            }
+        }
+        HorizontalDivider()
+    }
 }
 
 @Composable
