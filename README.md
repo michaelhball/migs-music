@@ -7,7 +7,7 @@ A simple, lightning-fast Android music player for files you actually own. No acc
 - **Plays your local audio library.** Anything Android's `MediaStore` indexes — MP3s, FLACs, M4As, etc.
 - **Browses by song, album, artist, folder, and playlist.** Folders preserve whatever structure you have on disk; albums and artists are derived from track tags.
 - **Queue with Play Next / Play Later** — Apple-Music-style segmented queue you can reorder and clear.
-- **Playlists.** Create, rename, delete, reorder. The same song can live in many playlists with no duplication.
+- **Playlists.** Create, rename, delete, reorder, sort. The same song can live in many playlists with no duplication.
 - **Imports playlists from your Mac's Music app** as M3U files (see below).
 - **Auto-rescans** when you drop new files onto the phone — no "refresh library" button to remember.
 - **Resumes where you left off.** Queue, position, shuffle/repeat state all survive cold starts.
@@ -24,6 +24,12 @@ You're going to use OpenMTP (or any other MTP transfer app) to drag files from y
 4. OpenMTP prompts on filename collisions, so re-dragging the same album later just skips files that are already there.
 
 The app's auto-rescan picks up the new files within a couple of seconds. No tap required.
+
+## Creating a playlist on the phone
+
+Tap the **+** floating button on the **Playlists** tab → name it → tap **Save**. Then add songs from anywhere: long-press (or tap ⋮ on) any song row → **Add to playlist…** → pick the playlist. The same song can be in any number of playlists.
+
+Reorder a playlist's songs by dragging the handle on the right of each row, or by using the up/down move buttons. Drag-to-reorder is hidden when you've sorted the playlist by anything other than the default order — pick *Default order* in the sort menu to re-enable.
 
 ## Importing a playlist from Mac Music.app
 
@@ -82,9 +88,9 @@ You can reorder Up Next via drag handles and clear the entire upcoming section i
 
 This is in active development on a OnePlus running Android 14. It works well on the developer's device with ~1800 songs; expect some rough edges with very large libraries (tens of thousands of songs).
 
-What's known to work well: cold-start library scan, playback, queue, playlists (including reorder), session restore, audio focus handover, lockscreen / notification controls, M3U import, swipe-to-dismiss → playback stops cleanly.
+What's known to work well: cold-start library scan, playback, queue, playlists (including reorder, sort, M3U import), session restore, audio focus handover, lockscreen / notification controls, swipe-to-dismiss → playback stops cleanly. The mini-player and full player both support horizontal swipe-to-skip; queue/playlist actions confirm via snackbar; the player's long-press menu offers *Save queue as playlist*, *Add to playlist*, *Go to album*, *Go to artist*; folder breadcrumbs let you jump to any ancestor; persisted player route reopens the player on the next cold start if you killed the app on it.
 
-What's not yet built (intentionally — see [workspace/UI_NEXT_BATCH.md](workspace/UI_NEXT_BATCH.md) for the queue): mini-player swipe-to-skip, snackbar feedback on add-to-queue actions, sleep timer, multi-select, smart playlists, crossfade, lyrics.
+What's not yet built (intentionally — see [workspace/UI_NEXT_BATCH.md](workspace/UI_NEXT_BATCH.md) for the queue): sleep timer, animated equaliser indicator on the now-playing row, recently-added section on the Songs tab, multi-select, smart playlists, crossfade, lyrics.
 
 ## Contributing
 
