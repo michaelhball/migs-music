@@ -40,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -73,22 +72,7 @@ internal fun PlaylistsRoute(
     val playlistSortOrder by playlistsViewModel.playlistSortOrder.collectAsStateWithLifecycle()
     var showDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableLongStateOf(-1L) }
-    var overflowOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
-
-    val importLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri == null) return@rememberLauncherForActivityResult
-            // Read the file synchronously here; it's a small text file. Pass parsed content
-            // (not the URI) to the VM so the VM stays Android-context-free.
-            val content =
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
-                }.getOrNull().orEmpty()
-            if (content.isBlank()) return@rememberLauncherForActivityResult
-            val defaultName = filenameFromUri(uri).removeSuffix(".m3u").removeSuffix(".m3u8")
-            playlistsViewModel.previewM3uImport(content, defaultName)
-        }
 
     val folderPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -156,26 +140,18 @@ internal fun PlaylistsRoute(
         )
     }
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showDialog = true },
-                modifier = Modifier.testTag(UiTestTags.PlaylistFab),
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Create playlist")
-            }
-        },
-    ) { innerPadding ->
+    // Nested Scaffold (inside the app's outer Scaffold + NavHost padding) would double-apply
+    // system-bar insets. Keep just the FAB by using a Box and aligning the button bottom-end.
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
                     .testTag(UiTestTags.PlaylistsScreen),
         ) {
-            // Sort menu + overflow ⋮ in the screen header. "New playlist" remains the FAB so
-            // the primary action stays one tap away; the overflow only hosts the M3U import
-            // entry. Sort sits next to the overflow on the right.
+            // Sort menu, right-aligned. "New playlist" is the FAB; M3U files are auto-imported
+            // by the Mac sync flow + the AvailableM3uList fallback below, so no overflow menu
+            // is needed.
             Row(
                 modifier =
                     Modifier
@@ -191,35 +167,6 @@ internal fun PlaylistsRoute(
                     nameOf = { it.name },
                     onSelect = playlistsViewModel::setPlaylistSortOrder,
                 )
-                Box {
-                    IconButton(
-                        onClick = { overflowOpen = true },
-                        modifier = Modifier.testTag(UiTestTags.PlaylistOverflow),
-                    ) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
-                    }
-                    DropdownMenu(
-                        expanded = overflowOpen,
-                        onDismissRequest = { overflowOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Import from M3U file") },
-                            onClick = {
-                                overflowOpen = false
-                                importLauncher.launch(
-                                    arrayOf(
-                                        "audio/x-mpegurl",
-                                        "audio/mpegurl",
-                                        "application/vnd.apple.mpegurl",
-                                        "application/x-mpegurl",
-                                        "*/*",
-                                    ),
-                                )
-                            },
-                            modifier = Modifier.testTag(UiTestTags.PlaylistImportFromM3u),
-                        )
-                    }
-                }
             }
             // Auto-detected M3U files in the user's Music folder. Either:
             // - Folder not yet picked: show a one-time setup banner.
@@ -259,6 +206,16 @@ internal fun PlaylistsRoute(
                     HorizontalDivider()
                 }
             }
+        }
+        FloatingActionButton(
+            onClick = { showDialog = true },
+            modifier =
+                Modifier
+                    .align(androidx.compose.ui.Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .testTag(UiTestTags.PlaylistFab),
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Create playlist")
         }
     }
 }
