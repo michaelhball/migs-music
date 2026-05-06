@@ -37,6 +37,16 @@ class AppPreferences(context: Context) {
                 ?: ArtistSortOrder.NAME_ASC
         set(value) = prefs.edit { putString(KEY_ARTIST_SORT, value.name) }
 
+    // Sort applied to a single artist's song list (the Artist Detail screen). Separate from
+    // the global songSortOrder so changing one doesn't surprise the other — defaults to
+    // ALBUM_ASC because grouping by album is the expected default when looking at one artist.
+    var artistDetailSongSortOrder: SongSortOrder
+        get() =
+            prefs.getString(KEY_ARTIST_DETAIL_SONG_SORT, null)
+                ?.let { name -> runCatching { SongSortOrder.valueOf(name) }.getOrNull() }
+                ?: SongSortOrder.ALBUM_ASC
+        set(value) = prefs.edit { putString(KEY_ARTIST_DETAIL_SONG_SORT, value.name) }
+
     var playlistSortOrder: PlaylistSortOrder
         get() =
             prefs.getString(KEY_PLAYLIST_SORT, null)
@@ -82,6 +92,7 @@ class AppPreferences(context: Context) {
         const val KEY_SONG_SORT = "song_sort_order"
         const val KEY_ALBUM_SORT = "album_sort_order"
         const val KEY_ARTIST_SORT = "artist_sort_order"
+        const val KEY_ARTIST_DETAIL_SONG_SORT = "artist_detail_song_sort_order"
         const val KEY_PLAYLIST_SORT = "playlist_sort_order"
         const val KEY_SHUFFLE = "shuffle_enabled"
         const val KEY_MUSIC_FOLDER_URI = "music_folder_tree_uri"

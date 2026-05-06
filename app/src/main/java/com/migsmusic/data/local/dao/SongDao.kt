@@ -31,6 +31,28 @@ interface SongDao {
     )
     fun observeFolders(): Flow<List<FolderSummary>>
 
+    /**
+     * Aggregate (folderPath, songCount) rows for songs at-or-below [parentPath]. Pass an
+     * empty string for the root. Caller (LibraryRepository.observeSubfolders) extracts the
+     * "next path segment" client-side and merges counts per segment.
+     *
+     * Why we don't extract the segment in SQL: SQLite has no string-split, only INSTR + SUBSTR
+     * which would require a recursive CTE or conditional path arithmetic for arbitrary depth.
+     * The Kotlin pass over the resulting distinct-folderPath rows (typically <100 rows even at
+     * 10k songs) is trivial compared to the prior approach of materializing every SongEntity
+     * row through a Flow on every emission.
+     */
+    @Query(
+        """
+        SELECT folderPath AS path, '' AS name, COUNT(*) AS songCount
+        FROM songs
+        WHERE folderPath != ''
+          AND (:parentPath = '' OR folderPath = :parentPath OR folderPath LIKE :parentPath || '/%')
+        GROUP BY folderPath
+        """,
+    )
+    fun observeFolderCountsUnder(parentPath: String): Flow<List<FolderSummary>>
+
     @Query(
         """
         SELECT * FROM songs

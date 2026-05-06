@@ -158,7 +158,10 @@ internal fun ArtistDetailRoute(
     currentSongId: Long?,
     onGoToAlbum: (album: String, artist: String) -> Unit,
 ) {
-    val songs by libraryViewModel.songsByArtist(artist).collectAsStateWithLifecycle(initialValue = emptyList())
+    val songs by libraryViewModel
+        .sortedSongsByArtist(artist)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val sortOrder by libraryViewModel.artistDetailSongSortOrder.collectAsStateWithLifecycle()
     val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -173,6 +176,7 @@ internal fun ArtistDetailRoute(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Button(onClick = { libraryViewModel.playSongs(songs, 0, shuffle = false) }, enabled = songs.isNotEmpty()) {
                 Text("Play Artist")
@@ -180,6 +184,14 @@ internal fun ArtistDetailRoute(
             Button(onClick = { libraryViewModel.playSongs(songs, 0, shuffle = true) }, enabled = songs.isNotEmpty()) {
                 Text("Shuffle Artist")
             }
+            Spacer(modifier = Modifier.weight(1f))
+            SortMenu(
+                current = sortOrder,
+                options = SongSortOrder.entries,
+                labelOf = { it.label },
+                nameOf = { it.name },
+                onSelect = libraryViewModel::setArtistDetailSongSortOrder,
+            )
         }
         Spacer(modifier = Modifier.height(8.dp))
         SongList(

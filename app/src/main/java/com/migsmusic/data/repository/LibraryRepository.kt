@@ -88,10 +88,17 @@ class LibraryRepository(
     /**
      * Returns the immediate child folders directly under [parentPath], plus their cumulative
      * song counts. Pass an empty string to get the top-level folders.
+     *
+     * Backed by [SongDao.observeFolderCountsUnder], which returns one row per distinct
+     * folderPath at-or-below [parentPath] (≤ a few hundred rows even on a 10k-song library).
+     * We then group those rows by their next-path-segment-relative-to-[parentPath]. Previously
+     * this mapped the full songs flow and rebuilt the segment map per row — fine at 1k songs,
+     * a real cliff at 10k where every MediaStore tick re-emitted ~10k SongEntity objects
+     * three times in parallel (see HierarchicalFolderView).
      */
     fun observeSubfolders(parentPath: String): Flow<List<FolderSummary>> =
-        songDao.observeAllSongs().map { all ->
-            buildSubfolders(all, parentPath)
+        songDao.observeFolderCountsUnder(parentPath.trimEnd('/')).map { rows ->
+            buildSubfoldersFromAggregates(rows, parentPath)
         }.flowOn(Dispatchers.Default)
 
     /** Songs whose `folderPath` equals exactly [parentPath] (no deeper). SQL-side filter + sort. */
@@ -108,23 +115,23 @@ class LibraryRepository(
 
     fun observeSongsByAlbum(albumKey: String): Flow<List<SongEntity>> = songDao.observeSongsByAlbum(albumKey)
 
-    private fun buildSubfolders(
-        all: List<SongEntity>,
+    private fun buildSubfoldersFromAggregates(
+        rows: List<FolderSummary>,
         parentPath: String,
     ): List<FolderSummary> {
         val normalizedParent = parentPath.trimEnd('/')
         val prefix = if (normalizedParent.isEmpty()) "" else "$normalizedParent/"
 
-        // For each song under the parent, take the next path segment as the immediate subfolder name.
         val accumulator = mutableMapOf<String, Int>()
-        for (song in all) {
-            val path = song.folderPath
+        for (row in rows) {
+            val path = row.path
+            // Defensive: SQL filter should already exclude these, but in case the parent string
+            // representation diverges (e.g. trailing slashes) we re-check here.
             if (normalizedParent.isNotEmpty() && !path.startsWith(prefix) && path != normalizedParent) continue
-            if (normalizedParent.isEmpty() && path.isEmpty()) continue
             val rel = if (normalizedParent.isEmpty()) path else path.removePrefix(prefix)
             val nextSegment = rel.substringBefore('/')
             if (nextSegment.isEmpty()) continue
-            accumulator.merge(nextSegment, 1, Int::plus)
+            accumulator.merge(nextSegment, row.songCount, Int::plus)
         }
         return accumulator.map { (name, count) ->
             val childPath = if (normalizedParent.isEmpty()) name else "$normalizedParent/$name"

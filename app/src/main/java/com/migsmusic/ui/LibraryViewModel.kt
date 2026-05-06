@@ -26,6 +26,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
+// JVM-builtin case-insensitive comparator. Used by sortSongs/sortAlbums/sortArtists to
+// avoid per-comparison allocation of a lowercased copy that `compareBy { it.x.lowercase() }`
+// would do — at 10k songs that's ~130k extra allocations per sort/keystroke during search.
+private val CI: Comparator<String> = String.CASE_INSENSITIVE_ORDER
+
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class LibraryViewModel(
     private val libraryRepository: LibraryRepository,
@@ -40,6 +45,12 @@ class LibraryViewModel(
     val albumSortOrder: StateFlow<AlbumSortOrder> = albumSort
     private val artistSort = MutableStateFlow(preferences.artistSortOrder)
     val artistSortOrder: StateFlow<ArtistSortOrder> = artistSort
+
+    // Separate sort state for the Artist Detail screen — viewing a single artist's songs is
+    // a different mental model from the global Songs tab (you typically want them grouped by
+    // album rather than by title), so changing one shouldn't surprise the other.
+    private val artistDetailSort = MutableStateFlow(preferences.artistDetailSongSortOrder)
+    val artistDetailSongSortOrder: StateFlow<SongSortOrder> = artistDetailSort
 
     val folders: StateFlow<List<FolderSummary>> =
         libraryRepository.observeFolders()
@@ -116,16 +127,33 @@ class LibraryViewModel(
         preferences.artistSortOrder = order
     }
 
+    fun setArtistDetailSongSortOrder(order: SongSortOrder) {
+        artistDetailSort.value = order
+        preferences.artistDetailSongSortOrder = order
+    }
+
+    /**
+     * Sorted-on-demand wrapper around [observeSongsByArtist]. Combines the songs flow with
+     * the artist-detail sort preference so the UI can just collect this and render.
+     */
+    fun sortedSongsByArtist(artist: String): Flow<List<SongEntity>> =
+        combine(libraryRepository.observeSongsByArtist(artist), artistDetailSort) { songs, order ->
+            sortSongs(songs, order)
+        }.flowOn(Dispatchers.Default)
+
     private fun sortAlbums(
         items: List<AlbumSummary>,
         order: AlbumSortOrder,
     ): List<AlbumSummary> =
         when (order) {
-            AlbumSortOrder.TITLE_ASC -> items.sortedWith(compareBy({ it.title.lowercase() }, { it.artist.lowercase() }))
+            AlbumSortOrder.TITLE_ASC ->
+                items.sortedWith(compareBy<AlbumSummary, String>(CI) { it.title }.thenBy(CI) { it.artist })
             AlbumSortOrder.TITLE_DESC ->
-                items.sortedWith(compareByDescending<AlbumSummary> { it.title.lowercase() }.thenBy { it.artist.lowercase() })
-            AlbumSortOrder.ARTIST_ASC -> items.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
-            AlbumSortOrder.SONG_COUNT_DESC -> items.sortedWith(compareByDescending<AlbumSummary> { it.songCount }.thenBy { it.title.lowercase() })
+                items.sortedWith(compareByDescending<AlbumSummary, String>(CI) { it.title }.thenBy(CI) { it.artist })
+            AlbumSortOrder.ARTIST_ASC ->
+                items.sortedWith(compareBy<AlbumSummary, String>(CI) { it.artist }.thenBy(CI) { it.title })
+            AlbumSortOrder.SONG_COUNT_DESC ->
+                items.sortedWith(compareByDescending<AlbumSummary> { it.songCount }.thenBy(CI) { it.title })
         }
 
     private fun sortArtists(
@@ -133,10 +161,12 @@ class LibraryViewModel(
         order: ArtistSortOrder,
     ): List<ArtistSummary> =
         when (order) {
-            ArtistSortOrder.NAME_ASC -> items.sortedBy { it.name.lowercase() }
-            ArtistSortOrder.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
-            ArtistSortOrder.SONG_COUNT_DESC -> items.sortedWith(compareByDescending<ArtistSummary> { it.songCount }.thenBy { it.name.lowercase() })
-            ArtistSortOrder.ALBUM_COUNT_DESC -> items.sortedWith(compareByDescending<ArtistSummary> { it.albumCount }.thenBy { it.name.lowercase() })
+            ArtistSortOrder.NAME_ASC -> items.sortedWith(compareBy<ArtistSummary, String>(CI) { it.name })
+            ArtistSortOrder.NAME_DESC -> items.sortedWith(compareByDescending<ArtistSummary, String>(CI) { it.name })
+            ArtistSortOrder.SONG_COUNT_DESC ->
+                items.sortedWith(compareByDescending<ArtistSummary> { it.songCount }.thenBy(CI) { it.name })
+            ArtistSortOrder.ALBUM_COUNT_DESC ->
+                items.sortedWith(compareByDescending<ArtistSummary> { it.albumCount }.thenBy(CI) { it.name })
         }
 
     private fun sortSongs(
@@ -144,20 +174,24 @@ class LibraryViewModel(
         order: SongSortOrder,
     ): List<SongEntity> =
         when (order) {
-            SongSortOrder.TITLE_ASC -> songs.sortedWith(compareBy({ it.title.lowercase() }, { it.artist.lowercase() }))
+            SongSortOrder.TITLE_ASC ->
+                songs.sortedWith(compareBy<SongEntity, String>(CI) { it.title }.thenBy(CI) { it.artist })
             SongSortOrder.TITLE_DESC ->
-                songs.sortedWith(
-                    compareByDescending<SongEntity> { it.title.lowercase() }.thenBy { it.artist.lowercase() },
-                )
+                songs.sortedWith(compareByDescending<SongEntity, String>(CI) { it.title }.thenBy(CI) { it.artist })
             SongSortOrder.ARTIST_ASC ->
                 songs.sortedWith(
-                    compareBy(
-                        { it.artist.lowercase() },
-                        { it.album.lowercase() },
-                        { it.discNumber },
-                        { it.trackNumber },
-                        { it.title.lowercase() },
-                    ),
+                    compareBy<SongEntity, String>(CI) { it.artist }
+                        .thenBy(CI) { it.album }
+                        .thenBy { it.discNumber }
+                        .thenBy { it.trackNumber }
+                        .thenBy(CI) { it.title },
+                )
+            SongSortOrder.ALBUM_ASC ->
+                songs.sortedWith(
+                    compareBy<SongEntity, String>(CI) { it.album }
+                        .thenBy { it.discNumber }
+                        .thenBy { it.trackNumber }
+                        .thenBy(CI) { it.title },
                 )
             SongSortOrder.DATE_ADDED_DESC -> songs.sortedByDescending { it.dateAddedSeconds }
             SongSortOrder.DURATION_ASC -> songs.sortedBy { it.durationMs }
@@ -225,6 +259,7 @@ enum class SongSortOrder(val label: String) {
     TITLE_ASC("Title A→Z"),
     TITLE_DESC("Title Z→A"),
     ARTIST_ASC("Artist A→Z"),
+    ALBUM_ASC("Album A→Z"),
     DATE_ADDED_DESC("Recently added"),
     DURATION_ASC("Shortest first"),
     DURATION_DESC("Longest first"),
