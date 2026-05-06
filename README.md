@@ -27,6 +27,11 @@ No Play Store listing yet. Build from source — see [CONTRIBUTING.md](CONTRIBUT
 - Notifications (lockscreen / shade controls).
 - Music folder access via SAF (only used by the playlist sync flow, to read pushed `.m3u` files).
 
+## Troubleshooting
+
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md) — common problems and fixes.
+
 ## Developer docs
 
 [CONTRIBUTING.md](CONTRIBUTING.md) — build, test, architecture, conventions.
+[RELEASING.md](RELEASING.md) — version bumps, signing, Play Store flow.
