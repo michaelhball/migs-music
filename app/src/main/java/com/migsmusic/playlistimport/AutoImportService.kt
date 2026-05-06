@@ -2,10 +2,12 @@ package com.migsmusic.playlistimport
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
+import com.migsmusic.playback.PlaybackManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -27,10 +29,13 @@ class AutoImportService(
     private val context: Context,
     private val playlistRepository: PlaylistRepository,
     private val libraryRepository: LibraryRepository,
+    private val playbackManager: PlaybackManager,
 ) {
     suspend fun importAllInTree(treeUri: Uri): List<DiscoveredM3u> {
         val files = scanForM3uFiles(context, treeUri)
-        if (files.isEmpty()) return emptyList()
+        // Even if no m3u files were pushed this round, we still want to honor the manifest —
+        // a sync that only deselects playlists pushes nothing but a manifest, and the receiver
+        // needs to prune those.
         Log.i(TAG, "importAllInTree: ${files.size} m3u file(s) found")
         // Force a fresh MediaStore → Room scan before reading the library snapshot. The Mac
         // sync flow pushes audio files via adb and broadcasts AUTO_IMPORT immediately after,
@@ -48,7 +53,71 @@ class AutoImportService(
                 unprocessed += file
             }
         }
+
+        // After importing, honor any sync manifest the Mac side dropped: prune synced
+        // playlists whose names aren't present (mirror semantics — uncheck on the Mac =
+        // remove from the phone). Manual playlists are never touched.
+        runCatching { pruneSyncedPlaylistsToManifest(treeUri) }
+            .onFailure { Log.w(TAG, "manifest prune failed", it) }
+
         return unprocessed
+    }
+
+    /**
+     * Reads the optional sync manifest at `<treeUri>/.migs-sync-manifest`, deletes any
+     * synced playlists not listed in it, then deletes the manifest. No-op if the file
+     * isn't there. The manifest is one playlist name per line, UTF-8.
+     *
+     * If the currently-playing song belongs to a pruned playlist, playback is stopped to
+     * avoid leaving an orphan track in the mini-player (same behavior as the user-facing
+     * delete flow in PlaylistsViewModel).
+     */
+    private suspend fun pruneSyncedPlaylistsToManifest(treeUri: Uri) {
+        // Read via SAF rather than direct java.io.File: scoped storage on Android 11+
+        // returns EACCES for dot-files (hidden) under /sdcard/Music even when normal
+        // .m3u reads succeed. SAF with a constructed doc URI works for the same path
+        // (verified by the delete flow), so we use it here too.
+        val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, "primary:Music/.migs-sync-manifest")
+        val manifestText =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(docUri)
+                        ?.use { it.bufferedReader().readText() }
+                }.getOrNull()
+            } ?: return // No manifest pushed this round; nothing to prune.
+
+        val keepNames =
+            manifestText
+                .lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+
+        val syncedPlaylists = playlistRepository.getSyncedPlaylists()
+        val toRemove = syncedPlaylists.filter { it.name !in keepNames }
+        if (toRemove.isNotEmpty()) {
+            Log.i(TAG, "pruning ${toRemove.size} synced playlist(s) not in manifest: ${toRemove.map { it.name }}")
+            val currentSongId = playbackManager.currentSongId.value
+            for (playlist in toRemove) {
+                if (currentSongId != null) {
+                    val ids = playlistRepository.getPlaylistSongIds(playlist.id)
+                    if (currentSongId in ids) {
+                        playbackManager.stopAndClearQueue()
+                    }
+                }
+                playlistRepository.deletePlaylist(playlist.id)
+            }
+        }
+
+        // Delete the manifest file via SAF — direct File.delete is blocked under scoped
+        // storage on /sdcard/Music for files we didn't create. The constructed doc URI is
+        // the same one we used to read the manifest above.
+        val deleted =
+            withContext(Dispatchers.IO) {
+                runCatching { DocumentFile.fromSingleUri(context, docUri)?.delete() ?: false }
+                    .getOrDefault(false)
+            }
+        if (!deleted) Log.w(TAG, "manifest delete failed at $docUri")
     }
 
     /**

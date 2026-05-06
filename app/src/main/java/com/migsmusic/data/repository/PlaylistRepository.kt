@@ -49,6 +49,8 @@ class PlaylistRepository(
     suspend fun getPlaylistSongIds(playlistId: Long): Set<Long> =
         playlistDao.getPlaylistSongEntities(playlistId).map { it.songId }.toSet()
 
+    suspend fun getSyncedPlaylists(): List<PlaylistEntity> = playlistDao.getSyncedPlaylists()
+
     suspend fun addSong(
         playlistId: Long,
         songId: Long,

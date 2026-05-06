@@ -63,6 +63,9 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists WHERE name = :name AND syncedFromMac = 1 LIMIT 1")
     suspend fun findSyncedPlaylistByName(name: String): PlaylistEntity?
 
+    @Query("SELECT * FROM playlists WHERE syncedFromMac = 1")
+    suspend fun getSyncedPlaylists(): List<PlaylistEntity>
+
     @Query("DELETE FROM playlists WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
 

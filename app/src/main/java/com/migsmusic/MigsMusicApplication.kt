@@ -57,24 +57,27 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
 
         val preferences = AppPreferences(applicationContext)
 
+        val playbackManager =
+            PlaybackManager(
+                context = applicationContext,
+                libraryRepository = libraryRepository,
+                sessionRepository = playbackSessionRepository,
+                preferences = preferences,
+            )
+
         val autoImportService =
             AutoImportService(
                 context = applicationContext,
                 playlistRepository = playlistRepository,
                 libraryRepository = libraryRepository,
+                playbackManager = playbackManager,
             )
 
         appContainer =
             AppContainer(
                 libraryRepository = libraryRepository,
                 playlistRepository = playlistRepository,
-                playbackManager =
-                    PlaybackManager(
-                        context = applicationContext,
-                        libraryRepository = libraryRepository,
-                        sessionRepository = playbackSessionRepository,
-                        preferences = preferences,
-                    ),
+                playbackManager = playbackManager,
                 preferences = preferences,
                 autoImportService = autoImportService,
             )
