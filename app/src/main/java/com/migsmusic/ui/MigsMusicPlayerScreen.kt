@@ -2,7 +2,6 @@ package com.migsmusic.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -357,48 +356,13 @@ internal fun MiniPlayer(
     onOpenPlayer: () -> Unit,
 ) {
     val current = playbackState.currentSong ?: return
-    // Mirror the full player's horizontal swipe-to-skip. Same 80dp threshold; once crossed,
-    // commit the skip and ignore further drag deltas until the gesture ends.
-    val skipThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
-    var dragX by remember { mutableFloatStateOf(0f) }
-    var dragCommitted by remember { mutableStateOf(false) }
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .testTag(UiTestTags.MiniPlayer)
-                .clickable(onClick = onOpenPlayer)
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            dragX = 0f
-                            dragCommitted = false
-                        },
-                        onDragEnd = {
-                            dragX = 0f
-                            dragCommitted = false
-                        },
-                        onDragCancel = {
-                            dragX = 0f
-                            dragCommitted = false
-                        },
-                        onHorizontalDrag = { _, delta ->
-                            if (dragCommitted) return@detectHorizontalDragGestures
-                            dragX += delta
-                            when {
-                                dragX <= -skipThresholdPx -> {
-                                    onSkipNext()
-                                    dragCommitted = true
-                                }
-                                dragX >= skipThresholdPx -> {
-                                    onSkipPrevious()
-                                    dragCommitted = true
-                                }
-                            }
-                        },
-                    )
-                },
+                .clickable(onClick = onOpenPlayer),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         // Thin progress indicator at the top — observes the position flow in isolation so
