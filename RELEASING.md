@@ -69,14 +69,24 @@ git push && git push --tags
 #    closed beta → open beta → production. Each track has its own rollout %.
 ```
 
-## Future automation
+## Automated release on tag push (optional)
 
-The 4-step flow could collapse into a single command. To wire up later:
+There's a `.github/workflows/release.yml` that builds a signed `.aab` automatically when you push a `vX.Y.Z` tag. It attaches the `.aab` to the GitHub Release page for that tag — uploading from there to the Play Console is still manual (the Play Developer API path is a follow-up).
 
-- **Google Play Developer API for uploads.** Free. Set up a service account in the Google Cloud Console with the `androidpublisher.applications.upload` scope, download the JSON key, and call the API from `release.sh`. One-shot upload to the Internal track without leaving the terminal.
-- **GitHub Actions on tag push.** A workflow that runs `release.sh` and uploads via the API. Keeps your laptop out of the loop entirely. Needs the keystore + service-account JSON as encrypted GitHub secrets.
+Required GitHub Secrets (Settings → Secrets and variables → Actions):
 
-For now, the manual step keeps you in the loop on every release, which is what you want until the app is mature.
+- `KEYSTORE_BASE64` — base64-encoded contents of your `.jks`. Generate with `base64 -i ~/migs-music-release.jks | pbcopy` and paste.
+- `KEYSTORE_PASSWORD` — keystore password.
+- `KEY_ALIAS` — alias inside the keystore (`migs-music` if you followed the keytool example).
+- `KEY_PASSWORD` — key password (typically same as keystore password if you used `keytool` defaults).
+
+Once configured, `./release.sh 0.2.0 --tag && git push --tags` triggers the workflow.
+
+## Future automation (still TODO)
+
+- **Google Play Developer API for uploads.** Free. Set up a service account in the Google Cloud Console with the `androidpublisher.applications.upload` scope, download the JSON key, and call the API from `release.sh` or the workflow. One-shot upload to the Internal track without manual Play Console clicks.
+
+For now, the manual upload step keeps you in the loop on every release, which is what you want until the app is mature.
 
 ## Versioning convention
 
