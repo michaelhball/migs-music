@@ -2,8 +2,10 @@ package com.migsmusic.data.repository
 
 import android.content.ContentUris
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.os.Build
 import android.provider.MediaStore
+import android.util.Log
 import com.migsmusic.data.local.dao.SongDao
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.local.model.AlbumSummary
@@ -101,14 +103,22 @@ class LibraryRepository(
                     add(MediaStore.Audio.Media.DATE_MODIFIED)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         add(MediaStore.Audio.Media.RELATIVE_PATH)
-                    } else {
-                        add(MediaStore.Audio.Media.DATA)
                     }
+                    // Always pull DATA (the absolute file path). It's deprecated on Q+ but
+                    // still readable, and we need it for MediaScannerConnection requests
+                    // when MediaStore returned tagless rows (see below).
+                    add(MediaStore.Audio.Media.DATA)
                 }.toTypedArray()
 
             val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
             val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
             val songs = mutableListOf<SongEntity>()
+            // Files where MediaStore returned tagless metadata. These get a follow-up
+            // MediaScannerConnection request after the main scan so the next ContentObserver
+            // tick reads proper artist/title. Happens when files are added by ANY mechanism
+            // that doesn't trigger the platform's media scanner — `adb push`, some MTP
+            // implementations, third-party file managers, etc.
+            val tagless = mutableListOf<String>()
 
             val cursor =
                 contentResolver.query(collection, projection, selection, null, sortOrder)
@@ -123,18 +133,19 @@ class LibraryRepository(
                 val trackIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
                 val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
                 val dateModifiedIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
-                val pathColumn =
+                val absolutePathIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                val displayPathColumn =
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.RELATIVE_PATH)
                     } else {
-                        cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                        absolutePathIndex
                     }
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idIndex)
                     val albumId = cursor.getLong(albumIdIndex).takeIf { it > 0L }
                     val rawTrack = cursor.getInt(trackIndex)
-                    val relativeOrAbsolutePath = cursor.getString(pathColumn).orEmpty()
+                    val relativeOrAbsolutePath = cursor.getString(displayPathColumn).orEmpty()
                     val folderInfo = deriveFolderInfo(relativeOrAbsolutePath)
                     val contentUri = ContentUris.withAppendedId(collection, id).toString()
                     val albumArtUri =
@@ -145,13 +156,20 @@ class LibraryRepository(
                             ).toString()
                         }
 
+                    val rawArtist = cursor.getString(artistIndex).orEmpty()
+                    val rawTitle = cursor.getString(titleIndex).orEmpty()
+                    val absolutePath = cursor.getString(absolutePathIndex).orEmpty()
+                    if (absolutePath.isNotEmpty() && (rawArtist.isBlank() || rawTitle.isBlank())) {
+                        tagless += absolutePath
+                    }
+
                     songs +=
                         SongEntity(
                             id = id,
                             contentUri = contentUri,
                             albumId = albumId,
-                            title = cursor.getString(titleIndex).orEmpty().ifBlank { "Unknown title" },
-                            artist = cursor.getString(artistIndex).orEmpty().ifBlank { "Unknown artist" },
+                            title = rawTitle.ifBlank { "Unknown title" },
+                            artist = rawArtist.ifBlank { "Unknown artist" },
                             album = cursor.getString(albumIndex).orEmpty().ifBlank { "Unknown album" },
                             durationMs = cursor.getLong(durationIndex),
                             trackNumber = rawTrack % 1000,
@@ -163,6 +181,21 @@ class LibraryRepository(
                             dateModifiedSeconds = cursor.getLong(dateModifiedIndex),
                         )
                 }
+            }
+
+            // Kick off a media-scanner pass for any tagless files. The platform reads ID3
+            // tags asynchronously and updates MediaStore; LibrarySyncObserver picks up
+            // that change on the next debounce and re-runs scanDevice, which then stores
+            // proper artist/title. This is what makes the app robust to files added via
+            // mechanisms that don't auto-trigger the scanner (adb push, some file managers).
+            if (tagless.isNotEmpty()) {
+                Log.i(TAG, "Requesting MediaScanner refresh for ${tagless.size} tagless files")
+                MediaScannerConnection.scanFile(
+                    context,
+                    tagless.toTypedArray(),
+                    null,
+                    null,
+                )
             }
 
             if (songs.isEmpty()) {
@@ -179,6 +212,7 @@ class LibraryRepository(
 
     private companion object {
         private const val UPSERT_CHUNK_SIZE = 1_000
+        private const val TAG = "LibraryRepository"
     }
 
     private suspend fun pruneMissingSongs(currentSongIds: Set<Long>) {

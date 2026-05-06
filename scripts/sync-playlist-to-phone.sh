@@ -144,6 +144,11 @@ while IFS=$'\t' read -r src_path artist title duration <&3; do
         adb shell "mkdir -p $quoted_dir" > /dev/null
         # `adb push` handles spaces in the destination natively, no extra quoting needed.
         adb push "$src_path" "$dest_path" > /dev/null
+        # adb push lands the file but Android's MediaStore won't read the ID3 tags from
+        # it until something explicitly triggers MEDIA_SCANNER_SCAN_FILE. Without this,
+        # the file appears in MediaStore with artist=NULL / title=filename and our M3U
+        # matcher can't pair it with EXTINF metadata.
+        adb shell "am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://$quoted_dest" > /dev/null 2>&1
         pushed=$((pushed + 1))
         echo "  + $rel_path"
     fi
