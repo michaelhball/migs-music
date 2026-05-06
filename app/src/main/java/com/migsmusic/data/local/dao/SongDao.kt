@@ -1,9 +1,8 @@
 package com.migsmusic.data.local.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.local.model.AlbumSummary
 import com.migsmusic.data.local.model.ArtistSummary
@@ -118,7 +117,12 @@ interface SongDao {
     )
     fun searchSongs(query: String): Flow<List<SongEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // @Upsert (INSERT-or-UPDATE) instead of @Insert(REPLACE) (DELETE-then-INSERT).
+    // The REPLACE path triggers ON DELETE CASCADE on `playlist_songs.songId`, wiping
+    // every playlist's contents on every scanDevice() pass — observed in practice when
+    // the auto-import receiver started running scanDevice before each sync. Upsert keeps
+    // the row identity stable, so foreign-key dependents survive.
+    @Upsert
     suspend fun upsertAll(songs: List<SongEntity>)
 
     @Query("DELETE FROM songs")
