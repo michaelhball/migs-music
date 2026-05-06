@@ -25,7 +25,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -218,7 +217,7 @@ class PlaylistsViewModel(
         defaultName: String,
     ) {
         viewModelScope.launch {
-            val library = libraryRepository.observeAllSongs().first()
+            val library = libraryRepository.getAllSongsOnce()
             val (matched, unmatched) =
                 withContext(Dispatchers.Default) {
                     val entries = parseM3u(m3uContent)

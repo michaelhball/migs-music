@@ -24,6 +24,14 @@ class LibraryRepository(
 ) {
     fun observeAllSongs(): Flow<List<SongEntity>> = songDao.observeAllSongs()
 
+    /**
+     * Snapshot the songs table once. Use this instead of `observeAllSongs().first()` for
+     * one-shot reads (M3U import, auto-import receiver) — Flow's first emission has to set
+     * up the invalidation tracker and round-trip through Dispatchers.IO before returning,
+     * which adds noticeable latency on a cold DB.
+     */
+    suspend fun getAllSongsOnce(): List<SongEntity> = songDao.getAllSongs()
+
     fun observeFolders(): Flow<List<FolderSummary>> = songDao.observeFolders()
 
     fun observeSongsInFolder(folderPath: String): Flow<List<SongEntity>> = songDao.observeSongsInFolder(folderPath)

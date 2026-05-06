@@ -209,8 +209,14 @@ class PlaybackManager(
 
                 val pos = player.currentPosition.coerceAtLeast(0L)
                 _currentPositionMs.value = pos
-                val duration = player.duration.takeIf { it > 0 }
-                if (duration != null && duration != _uiState.value.durationMs) {
+                // Suppress duration churn: ExoPlayer reports several intermediate values
+                // during track-load (-MAX_LONG → real value), and minor drifts of a few ms
+                // around real playback can also trip an "update". Each accepted update
+                // re-renders the Slider's valueRange and forces a re-measure. Require a
+                // ≥250ms delta to filter that.
+                val duration = player.duration.takeIf { it > 0 } ?: continue
+                val current = _uiState.value.durationMs
+                if (kotlin.math.abs(duration - current) >= MIN_DURATION_DELTA_MS) {
                     _uiState.update { it.copy(durationMs = duration) }
                 }
                 // Every ~10s of playback, snapshot the position so a process kill mid-song
@@ -509,6 +515,13 @@ class PlaybackManager(
         /** Window during which repeated `onPlayerError` events count as one burst. */
         const val ERROR_BURST_WINDOW_MS = 1_000L
 
+        /**
+         * Below this threshold we ignore duration updates. ExoPlayer reports duration in a
+         * staircase as the player sets up; without this the Slider's valueRange thrashes
+         * several times per track and the slider thumb jitters during track-loads.
+         */
+        const val MIN_DURATION_DELTA_MS = 250L
+
         /** Stop auto-advancing once we hit this many errors inside one burst window. */
         const val MAX_CONSECUTIVE_ERRORS = 3
     }
@@ -762,7 +775,12 @@ class PlaybackManager(
             val currentEntry = state.currentItem
             if (currentEntry.entryId == lastArtworkEntryId) return@launch
 
-            val song = libraryRepository.getSongsByIds(listOf(currentEntry.songId)).firstOrNull() ?: return@launch
+            // Prefer the in-memory queue cache (already loaded by syncPlayer) over re-querying
+            // Room — same song, same row, but skips an IO hop on every track transition.
+            val song =
+                queueSongCache[currentEntry.songId]
+                    ?: libraryRepository.getSongsByIds(listOf(currentEntry.songId)).firstOrNull()
+                    ?: return@launch
             val artUri =
                 song.albumArtUri ?: run {
                     lastArtworkEntryId = currentEntry.entryId

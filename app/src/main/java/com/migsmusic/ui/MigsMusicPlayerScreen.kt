@@ -265,8 +265,15 @@ internal fun PlayerRoute(
                     )
                 }
             }
+            // Cache the float-coerced duration so the Slider's valueRange object is only
+            // re-allocated when durationMs actually changes — without this remember,
+            // every recomposition (twice per second under the position ticker) builds a
+            // fresh ClosedFloatingPointRange, forcing the slider to re-measure.
+            val durationFloat by remember(state.durationMs) {
+                mutableStateOf(state.durationMs.coerceAtLeast(1L).toFloat())
+            }
             Slider(
-                value = sliderPosition.coerceIn(0f, state.durationMs.coerceAtLeast(1L).toFloat()),
+                value = sliderPosition.coerceIn(0f, durationFloat),
                 onValueChange = {
                     dragging = true
                     dragValue = it
@@ -275,7 +282,7 @@ internal fun PlayerRoute(
                     playerViewModel.seekTo(dragValue.toLong())
                     dragging = false
                 },
-                valueRange = 0f..state.durationMs.coerceAtLeast(1L).toFloat(),
+                valueRange = 0f..durationFloat,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),

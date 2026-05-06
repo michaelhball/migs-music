@@ -9,7 +9,6 @@ import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -71,7 +70,7 @@ class AutoImportService(
             // Each file's matcher pass would otherwise rebuild three maps over the full library
             // — for a Mac sync landing 10 m3u's against a 5k-song library that's 30 redundant
             // associateBy passes.
-            val library = libraryRepository.observeAllSongs().first()
+            val library = libraryRepository.getAllSongsOnce()
             val index = M3uMatcherIndex(library)
             for (file in files) {
                 when (val outcome = autoImportSingleFile(file, index)) {

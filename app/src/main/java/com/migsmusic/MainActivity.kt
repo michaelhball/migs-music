@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,12 @@ class MainActivity : ComponentActivity() {
                         contract = ActivityResultContracts.RequestPermission(),
                     ) { granted ->
                         hasPermission = granted
+                        // Once the user has granted media access, also ask for notifications
+                        // (Android 13+). Without it our playback notification posts silently
+                        // and never reaches the lockscreen / shade — first-launch UX bug on
+                        // every modern device. We chain rather than ask both up-front so the
+                        // user only sees the second prompt after committing to using the app.
+                        if (granted) maybeRequestPostNotifications()
                     }
 
                 MigsMusicApp(
@@ -45,8 +52,24 @@ class MainActivity : ComponentActivity() {
                         permissionLauncher.launch(requiredMusicPermission())
                     },
                 )
+
+                // Already-granted users on a fresh install: ask for POST_NOTIFICATIONS once
+                // up-front. Idempotent (the system remembers the answer); no-op pre-T.
+                LaunchedEffect(hasPermission) {
+                    if (hasPermission) maybeRequestPostNotifications()
+                }
             }
         }
+    }
+
+    private val postNotificationsLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* result is informational */ }
+
+    private fun maybeRequestPostNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val perm = Manifest.permission.POST_NOTIFICATIONS
+        if (ContextCompat.checkSelfPermission(this, perm) == PermissionChecker.PERMISSION_GRANTED) return
+        postNotificationsLauncher.launch(perm)
     }
 
     private fun checkMusicPermission(): Boolean =
