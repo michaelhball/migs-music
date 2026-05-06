@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -18,6 +20,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing config. Reads from a local-only `keystore.properties` (gitignored)
+    // so the keystore path + passwords never land in the repo. If the file is absent (the
+    // common case during dev), the release build will still produce an unsigned .aab —
+    // useful for size checks but not Play-uploadable. Set up: see RELEASING.md.
+    signingConfigs {
+        create("release") {
+            val props = Properties()
+            val propsFile = rootProject.file("keystore.properties")
+            if (propsFile.exists()) {
+                props.load(propsFile.inputStream())
+                storeFile = file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -25,6 +45,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Only attach the signing config if the keystore.properties file exists; otherwise
+            // the release build is unsigned (still produces a .aab, just not Play-uploadable).
+            if (rootProject.file("keystore.properties").exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

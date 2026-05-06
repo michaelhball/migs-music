@@ -66,3 +66,8 @@ app/debug/
 # Coverage
 coverage/
 jacoco.exec
+
+# Release signing — keep keystore + passwords out of the repo
+keystore.properties
+*.jks
+*.keystore
