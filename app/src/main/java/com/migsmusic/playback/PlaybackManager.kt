@@ -317,6 +317,26 @@ class PlaybackManager(
         }
     }
 
+    /**
+     * Stops playback, clears the queue, and resets the persisted snapshot. Used when the
+     * user deletes the playlist whose songs are currently in the queue — continuing to
+     * play (or showing the now-orphan track in the mini-player) would be confusing.
+     */
+    fun stopAndClearQueue() {
+        scope.launch {
+            withContext(Dispatchers.Main.immediate) {
+                player.pause()
+                player.clearMediaItems()
+            }
+            queueEngine.clear()
+            queueSongCache = emptyMap()
+            _uiState.value = PlaybackUiState()
+            _currentSongId.value = null
+            _currentPositionMs.value = 0L
+            persistSnapshot()
+        }
+    }
+
     fun clearUpcoming() {
         scope.launch {
             val updated = queueEngine.clearUpcoming() ?: return@launch

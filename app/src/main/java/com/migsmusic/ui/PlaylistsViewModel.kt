@@ -127,7 +127,20 @@ class PlaylistsViewModel(
     }
 
     fun deletePlaylist(playlistId: Long) {
-        viewModelScope.launch { playlistRepository.deletePlaylist(playlistId) }
+        viewModelScope.launch {
+            // If the song currently in the queue belongs to this playlist, stop playback
+            // first. Otherwise the mini-player would keep showing an orphan track from a
+            // playlist that no longer exists, which is confusing — and pressing play would
+            // resume audio sourced from a now-deleted context.
+            val currentSongId = playbackManager.currentSongId.value
+            if (currentSongId != null) {
+                val songIdsInPlaylist = playlistRepository.getPlaylistSongIds(playlistId)
+                if (currentSongId in songIdsInPlaylist) {
+                    playbackManager.stopAndClearQueue()
+                }
+            }
+            playlistRepository.deletePlaylist(playlistId)
+        }
     }
 
     fun renamePlaylist(

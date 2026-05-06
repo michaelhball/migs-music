@@ -46,6 +46,9 @@ class PlaylistRepository(
         playlistDao.deletePlaylist(playlistId)
     }
 
+    suspend fun getPlaylistSongIds(playlistId: Long): Set<Long> =
+        playlistDao.getPlaylistSongEntities(playlistId).map { it.songId }.toSet()
+
     suspend fun addSong(
         playlistId: Long,
         songId: Long,
