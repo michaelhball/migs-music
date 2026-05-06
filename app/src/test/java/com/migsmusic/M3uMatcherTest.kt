@@ -2,6 +2,7 @@ package com.migsmusic
 
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.playlistimport.M3uEntry
+import com.migsmusic.playlistimport.M3uMatcherIndex
 import com.migsmusic.playlistimport.basenameTitle
 import com.migsmusic.playlistimport.matchM3uEntries
 import com.migsmusic.playlistimport.normalize
@@ -165,6 +166,89 @@ class M3uMatcherTest {
         assertEquals("creep", normalize("Creep (Acoustic)"))
         assertEquals("creep", normalize("Creep [Live at Glasto]"))
         assertTrue(normalize("  multi   space  ") == "multi space")
+    }
+
+    @Test
+    fun reusedMatcherIndexProducesSameResultsAcrossCalls() {
+        // Index is built once per Mac sync batch. Hitting the same library across multiple
+        // entry batches must produce identical matches — regression guard for the perf
+        // optimisation that shares the index across files.
+        val library =
+            listOf(
+                song(1, "Artist", "First"),
+                song(2, "Artist", "Second"),
+            )
+        val index = M3uMatcherIndex(library)
+
+        val firstBatch =
+            matchM3uEntries(
+                listOf(M3uEntry("a.mp3", artist = "Artist", title = "First")),
+                index,
+            )
+        val secondBatch =
+            matchM3uEntries(
+                listOf(M3uEntry("b.mp3", artist = "Artist", title = "Second")),
+                index,
+            )
+        // Re-run the first batch to make sure the index hasn't been mutated.
+        val firstBatchAgain =
+            matchM3uEntries(
+                listOf(M3uEntry("a.mp3", artist = "Artist", title = "First")),
+                index,
+            )
+
+        assertEquals(1L, firstBatch.matched.single().song.id)
+        assertEquals(2L, secondBatch.matched.single().song.id)
+        assertEquals(1L, firstBatchAgain.matched.single().song.id)
+    }
+
+    @Test
+    fun normalizedArtistTitleFallbackTrumpsBasenameWhenBothWouldMatch() {
+        // The matcher's three-pass order is exact (artist+title) → normalised → basename.
+        // Make sure pass 2 wins when pass 1 fails — even if basename would also match a
+        // different song, normalised artist+title is more specific and should win.
+        val library =
+            listOf(
+                song(1, "Pink Floyd", "Money"),
+                song(2, "Some Other Artist", "Money"),
+            )
+        // Entry has the qualifier; library has the bare title. Normalised match against
+        // (Pink Floyd, Money) succeeds in pass 2.
+        val entries =
+            listOf(
+                M3uEntry(rawPath = "/Music/SomeOtherArtist/Money.mp3", artist = "Pink Floyd", title = "Money (2011 Remaster)"),
+            )
+
+        val result = matchM3uEntries(entries, library)
+
+        assertEquals(1L, result.matched.single().song.id)
+    }
+
+    @Test
+    fun emptyLibraryProducesEmptyIndexButDoesntCrash() {
+        // M3uMatcherIndex(emptyList()) should produce empty maps, not blow up.
+        val index = M3uMatcherIndex(emptyList())
+        val result =
+            matchM3uEntries(
+                listOf(M3uEntry("a.mp3", artist = "X", title = "Y")),
+                index,
+            )
+        assertEquals(0, result.matched.size)
+        assertEquals(1, result.unmatched.size)
+    }
+
+    @Test
+    fun titleContainingHyphensSurvivesParsedSeparator() {
+        // EXTINF "Artist - Title with - hyphen" — the parser splits on the FIRST " - "
+        // separator, so artist is "Artist" and title is "Title with - hyphen". The matcher
+        // should find it.
+        val library = listOf(song(7, artist = "The Artist", title = "Title with - hyphen"))
+        val entries =
+            listOf(
+                M3uEntry(rawPath = "x.mp3", artist = "The Artist", title = "Title with - hyphen"),
+            )
+        val result = matchM3uEntries(entries, library)
+        assertEquals(7L, result.matched.single().song.id)
     }
 
     @Test

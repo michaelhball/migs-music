@@ -212,6 +212,7 @@ fun MigsMusicApp(
                         currentSongId = playbackState.currentSong?.songId,
                         onOpenAlbums = { navController.navigate("albums") },
                         onOpenArtists = { navController.navigate("artists") },
+                        onOpenSettings = { navController.navigate("settings") },
                         onGoToAlbum = { album, artist ->
                             val key = "$album|||$artist"
                             navController.navigate("album/${java.net.URLEncoder.encode(key, "UTF-8")}")
@@ -354,6 +355,12 @@ fun MigsMusicApp(
                     QueueRoute(
                         playerViewModel = playerViewModel,
                         playlistsViewModel = playlistsViewModel,
+                    )
+                }
+                composable("settings") {
+                    SettingsRoute(
+                        libraryRepository = appContainer.libraryRepository,
+                        onGoBack = { navController.popBackStack() },
                     )
                 }
                 composable("player") {

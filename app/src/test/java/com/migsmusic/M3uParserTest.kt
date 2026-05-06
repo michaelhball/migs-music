@@ -140,6 +140,65 @@ class M3uParserTest {
     }
 
     @Test
+    fun consecutiveExtinfLinesLastOneWins() {
+        // Two EXTINF lines back-to-back — only the most recent applies to the path that
+        // follows. (The first one's metadata is dropped on the floor; we don't surface it
+        // anywhere.) Documents the actual behavior; not a feature, just want a regression
+        // check if the parser's metadata-buffer logic ever changes.
+        val content =
+            """
+            #EXTM3U
+            #EXTINF:100,Wrong Artist - Wrong Title
+            #EXTINF:200,Right Artist - Right Title
+            /path/song.mp3
+            """.trimIndent()
+
+        val entry = parseM3u(content).single()
+        assertEquals("Right Artist", entry.artist)
+        assertEquals("Right Title", entry.title)
+        assertEquals(200, entry.durationSec)
+    }
+
+    @Test
+    fun pathOnlyM3uWithNoExtm3uMarkerStillParses() {
+        // Plain M3U (no #EXTM3U header) — a list of paths, no metadata. Common for old-
+        // style or hand-written playlists.
+        val content =
+            """
+            /Music/A/track1.mp3
+            /Music/A/track2.mp3
+            /Music/A/track3.mp3
+            """.trimIndent()
+        val entries = parseM3u(content)
+        assertEquals(3, entries.size)
+        entries.forEach {
+            assertNull(it.artist)
+            assertNull(it.title)
+        }
+    }
+
+    @Test
+    fun unicodePathsAndTitlesRoundTrip() {
+        // Unicode (CJK, accented, emoji) shouldn't trip the parser's UTF-8 handling.
+        val content = "#EXTINF:120,Sigur Rós - Hoppípolla\n/Music/Sigur Rós/Hoppípolla.mp3"
+        val entry = parseM3u(content).single()
+        assertEquals("Sigur Rós", entry.artist)
+        assertEquals("Hoppípolla", entry.title)
+        assertEquals("/Music/Sigur Rós/Hoppípolla.mp3", entry.rawPath)
+    }
+
+    @Test
+    fun titleWithExtraHyphensPreservesAfterFirstSeparator() {
+        // EXTINF "Artist - Title - With - More - Hyphens": the parser splits on the FIRST
+        // " - " sequence so the artist is "Artist" and the title carries the rest. Worth
+        // a regression test because it'd be tempting to "fix" with a smarter heuristic.
+        val content = "#EXTINF:120,Artist - Title - With - Hyphens\n/path.mp3"
+        val entry = parseM3u(content).single()
+        assertEquals("Artist", entry.artist)
+        assertEquals("Title - With - Hyphens", entry.title)
+    }
+
+    @Test
     fun blankLinesAreSkipped() {
         val content =
             """
