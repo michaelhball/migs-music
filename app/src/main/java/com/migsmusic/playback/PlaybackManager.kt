@@ -38,7 +38,7 @@ class PlaybackManager(
     private val libraryRepository: LibraryRepository,
     private val sessionRepository: PlaybackSessionRepository,
     private val preferences: AppPreferences,
-) {
+) : PlaybackController {
     private val applicationContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val player =
@@ -69,7 +69,7 @@ class PlaybackManager(
     val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
 
     private val _currentSongId = MutableStateFlow<Long?>(null)
-    val currentSongId: StateFlow<Long?> = _currentSongId.asStateFlow()
+    override val currentSongId: StateFlow<Long?> = _currentSongId.asStateFlow()
 
     /**
      * Mirror of [ExoPlayer.isPlaying] as a flow so the position ticker can suspend until the
@@ -328,7 +328,7 @@ class PlaybackManager(
      * user deletes the playlist whose songs are currently in the queue — continuing to
      * play (or showing the now-orphan track in the mini-player) would be confusing.
      */
-    fun stopAndClearQueue() {
+    override fun stopAndClearQueue() {
         scope.launch {
             withContext(Dispatchers.Main.immediate) {
                 player.pause()
@@ -617,64 +617,27 @@ class PlaybackManager(
                 if (n == 0) return@withContext emptyList()
                 (0 until n).map { i -> player.getMediaItemAt(i).mediaId }
             }
-        if (playerSnapshot.isEmpty()) return false
-        if (playerSnapshot == newIds) return true
-
         val currentMediaIndex = withContext(Dispatchers.Main.immediate) { player.currentMediaItemIndex }
 
-        // Single insertion: newIds is playerSnapshot with one extra entry inserted at index `at`.
-        if (newIds.size == playerSnapshot.size + 1) {
-            val at =
-                (newIds.indices).firstOrNull { i ->
-                    i >= playerSnapshot.size || playerSnapshot[i] != newIds[i]
-                } ?: return false
-            if (newIds.drop(at + 1) != playerSnapshot.drop(at)) return false
-            // Don't insert at the current index — would shift the currently-playing item.
-            if (at <= currentMediaIndex) return false
-            val entry = newQueue[at]
-            val song = songsById[entry.songId] ?: return false
-            val mediaItem = buildMediaItem(entry, song)
-            withContext(Dispatchers.Main.immediate) {
-                player.addMediaItem(at, mediaItem)
+        return when (val diff = computeIncrementalDiff(playerSnapshot, newIds, currentMediaIndex)) {
+            IncrementalDiff.NoOp -> true
+            IncrementalDiff.FullRebuild -> false
+            is IncrementalDiff.Insert -> {
+                val entry = newQueue[diff.index]
+                val song = songsById[entry.songId] ?: return false
+                val mediaItem = buildMediaItem(entry, song)
+                withContext(Dispatchers.Main.immediate) { player.addMediaItem(diff.index, mediaItem) }
+                true
             }
-            return true
-        }
-
-        // Single removal: playerSnapshot is newIds with one extra entry at index `at`.
-        if (newIds.size == playerSnapshot.size - 1) {
-            val at =
-                (playerSnapshot.indices).firstOrNull { i ->
-                    i >= newIds.size || playerSnapshot[i] != newIds[i]
-                } ?: return false
-            if (playerSnapshot.drop(at + 1) != newIds.drop(at)) return false
-            // Removing the currently-playing item requires the full prepare cascade.
-            if (at == currentMediaIndex) return false
-            withContext(Dispatchers.Main.immediate) {
-                player.removeMediaItem(at)
+            is IncrementalDiff.Remove -> {
+                withContext(Dispatchers.Main.immediate) { player.removeMediaItem(diff.index) }
+                true
             }
-            return true
-        }
-
-        // Single move: same size, one entry slid from `from` to `to`.
-        if (newIds.size == playerSnapshot.size) {
-            val firstDiff = newIds.indices.firstOrNull { playerSnapshot[it] != newIds[it] } ?: return true
-            val movedEntryId = playerSnapshot[firstDiff]
-            val newPos = newIds.indexOf(movedEntryId)
-            if (newPos == -1) return false
-            val rebuilt =
-                playerSnapshot.toMutableList().apply {
-                    removeAt(firstDiff)
-                    add(newPos, movedEntryId)
-                }
-            if (rebuilt != newIds) return false
-            if (firstDiff == currentMediaIndex || newPos == currentMediaIndex) return false
-            withContext(Dispatchers.Main.immediate) {
-                player.moveMediaItem(firstDiff, newPos)
+            is IncrementalDiff.Move -> {
+                withContext(Dispatchers.Main.immediate) { player.moveMediaItem(diff.from, diff.to) }
+                true
             }
-            return true
         }
-
-        return false
     }
 
     private suspend fun publishUiState() {

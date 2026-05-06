@@ -7,7 +7,7 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
-import com.migsmusic.playback.PlaybackManager
+import com.migsmusic.playback.PlaybackController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -23,7 +23,8 @@ data class ImportSummary(
     val failures: List<Pair<DiscoveredM3u, String>>,
 )
 
-private sealed interface SingleFileOutcome {
+/** Visible to tests so they can assert outcomes per file directly. */
+internal sealed interface SingleFileOutcome {
     data object Imported : SingleFileOutcome
 
     data object NoMatches : SingleFileOutcome
@@ -45,7 +46,7 @@ class AutoImportService(
     private val context: Context,
     private val playlistRepository: PlaylistRepository,
     private val libraryRepository: LibraryRepository,
-    private val playbackManager: PlaybackManager,
+    private val playbackController: PlaybackController,
 ) {
     suspend fun importAllInTree(treeUri: Uri): ImportSummary {
         val files = scanForM3uFiles(context, treeUri)
@@ -152,12 +153,12 @@ class AutoImportService(
                     emptyList()
                 }
 
-            val currentSongId = playbackManager.currentSongId.value
+            val currentSongId = playbackController.currentSongId.value
             for (playlist in toRemove) {
                 if (currentSongId != null) {
                     val ids = playlistRepository.getPlaylistSongIds(playlist.id)
                     if (currentSongId in ids) {
-                        playbackManager.stopAndClearQueue()
+                        playbackController.stopAndClearQueue()
                     }
                 }
                 playlistRepository.deletePlaylist(playlist.id)
@@ -240,7 +241,7 @@ class AutoImportService(
      * - [SingleFileOutcome.Failed] — IO error, parse error, or upsert exception. Returned
      *   reason gets surfaced via snackbar so the user knows something's wrong.
      */
-    private suspend fun autoImportSingleFile(
+    internal suspend fun autoImportSingleFile(
         file: DiscoveredM3u,
         index: M3uMatcherIndex,
     ): SingleFileOutcome =

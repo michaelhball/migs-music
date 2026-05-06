@@ -1,4 +1,4 @@
-# Contributing to MIGS Music
+# Contributing to migs music
 
 How to build, run, test, and submit changes.
 
