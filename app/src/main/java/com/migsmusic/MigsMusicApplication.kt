@@ -1,6 +1,9 @@
 package com.migsmusic
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
+import android.util.Log
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import coil.ImageLoader
@@ -85,6 +88,12 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
         if (!isInstrumentationRunning()) {
             LibrarySyncObserver(applicationContext, libraryRepository).start()
         }
+
+        // Force-stop / debug reinstall doesn't checkpoint WAL on this device, so writes that
+        // landed only in WAL get lost. Checkpoint when the app moves to the background so the
+        // main DB file always has the latest committed state. Cheap enough to run on every
+        // background transition.
+        registerActivityLifecycleCallbacks(WalCheckpointer(database))
     }
 
     /**
@@ -117,3 +126,48 @@ data class AppContainer(
     val preferences: AppPreferences,
     val autoImportService: AutoImportService,
 )
+
+/**
+ * Counts visible activities; when the count drops to zero (app going to background) the
+ * Room WAL is checkpointed via `PRAGMA wal_checkpoint(TRUNCATE)`. Without this, writes
+ * that have committed to WAL but not yet been merged into the main DB file can be lost
+ * when the OS aggressively kills the process — observed in practice during debug
+ * `adb install -r` cycles where playlist rows persisted but `playlist_songs` rows did not.
+ */
+private class WalCheckpointer(
+    private val database: AppDatabase,
+) : Application.ActivityLifecycleCallbacks {
+    private var startedActivities = 0
+
+    override fun onActivityStarted(activity: Activity) {
+        startedActivities++
+    }
+
+    override fun onActivityStopped(activity: Activity) {
+        startedActivities--
+        if (startedActivities <= 0) {
+            startedActivities = 0
+            runCatching {
+                database.openHelper.writableDatabase
+                    .query("PRAGMA wal_checkpoint(TRUNCATE)")
+                    .use { it.moveToFirst() }
+            }.onFailure { Log.w("WalCheckpointer", "checkpoint failed", it) }
+        }
+    }
+
+    override fun onActivityCreated(
+        activity: Activity,
+        savedInstanceState: Bundle?,
+    ) = Unit
+
+    override fun onActivityResumed(activity: Activity) = Unit
+
+    override fun onActivityPaused(activity: Activity) = Unit
+
+    override fun onActivitySaveInstanceState(
+        activity: Activity,
+        outState: Bundle,
+    ) = Unit
+
+    override fun onActivityDestroyed(activity: Activity) = Unit
+}
