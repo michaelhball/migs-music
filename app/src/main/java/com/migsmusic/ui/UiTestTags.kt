@@ -61,8 +61,6 @@ object UiTestTags {
     const val M3uImportConfirm = "m3u_import_confirm"
     const val M3uImportCancel = "m3u_import_cancel"
     const val M3uImportUnmatchedToggle = "m3u_import_unmatched_toggle"
-    const val M3uFolderSetupBanner = "m3u_folder_setup_banner"
-    const val M3uPickFolderButton = "m3u_pick_folder_button"
     const val M3uAvailableSection = "m3u_available_section"
     const val M3uAvailableRow = "m3u_available_row"
     const val M3uAvailableImportButton = "m3u_available_import_button"

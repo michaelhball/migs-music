@@ -88,8 +88,10 @@ app/src/main/java/com/migsmusic/
 │   └── QueueModels.kt
 ├── playlistimport/
 │   ├── M3uParser.kt            # Pure parser — plain + Extended M3U
-│   ├── M3uMatcher.kt           # Three-pass matcher: exact / normalised / basename
-│   └── M3uFileScanner.kt       # SAF tree walk for auto-detect
+│   ├── M3uMatcher.kt           # Three-pass matcher (exact / normalised / basename); reusable index
+│   ├── M3uFileScanner.kt       # Direct fs scan of /sdcard/Android/media/com.migsmusic/sync/
+│   ├── AutoImportService.kt    # Per-file import + manifest-driven playlist prune
+│   └── AutoImportReceiver.kt   # Manifest-declared receiver woken by Mac sync broadcast
 └── ui/
     ├── MigsMusicApp.kt         # Top-level NavHost + bottom bar
     ├── MigsMusic{Songs,Albums,Folders,Playlists,Queue,Player}Screen.kt
@@ -106,7 +108,10 @@ Key architecture decisions:
 - **`QueueEngine` is pure-Kotlin and Main-only.** No locks; threading correctness is enforced by always dispatching mutations through `Main.immediate`.
 - **Snapshot persistence is conflated** through a `Channel<Unit>(CONFLATED)` consumed by a single writer coroutine — rapid skips/transitions collapse to one save.
 - **Library queries push to SQL.** Albums, artists, folder filtering are all Room `GROUP BY` queries — not in-memory.
-- **WAL journal mode** so MediaStore-driven scans don't block UI reads.
+- **WAL journal mode** so MediaStore-driven scans don't block UI reads. WAL is also explicitly checkpointed on Activity stop so writes don't get lost across `adb install -r` cycles in development.
+- **Stable song identity via `absolutePath`.** MediaStore `_ID` reassigns when MediaScanner re-reads a file's tags. `LibraryRepository.scanDevice` detects these reassignments by joining old vs. new (id, absolutePath) pairs and remaps `playlist_songs.songId` references atomically before pruning, so playlists survive `_ID` churn.
+- **Sync via app media dir, not SAF.** The Mac sync app pushes M3U + manifest to `/sdcard/Android/media/com.migsmusic/sync/` via `adb`. Owned by us, no permission grant required, no SAF picker (Android 11+ refuses to grant access to `/sdcard/Music` so SAF is a non-starter for our use case). Audio files still go to `/sdcard/Music/` where MediaStore indexes them.
+- **`AutoImportReceiver`** is manifest-declared with `FLAG_INCLUDE_STOPPED_PACKAGES` support so the Mac sync's broadcast wakes the app from cold-stopped state.
 - **Coil with custom `ImageLoader`** — 20% memory cache, 64MB disk cache for album art.
 
 ## Project layout for non-source files

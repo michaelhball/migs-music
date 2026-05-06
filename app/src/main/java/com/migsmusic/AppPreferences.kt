@@ -59,15 +59,6 @@ class AppPreferences(context: Context) {
         set(value) = prefs.edit { putBoolean(KEY_SHUFFLE, value) }
 
     /**
-     * SAF tree URI for the user's Music folder. Granted via [ActivityResultContracts.OpenDocumentTree]
-     * the first time the user wants to auto-detect M3U playlist files. Persisted across launches
-     * so the user only picks once. `null` = not yet granted (or revoked).
-     */
-    var musicFolderTreeUri: String?
-        get() = prefs.getString(KEY_MUSIC_FOLDER_URI, null)
-        set(value) = prefs.edit { putString(KEY_MUSIC_FOLDER_URI, value) }
-
-    /**
      * Whether the user was on the full-screen player route the last time we observed nav state.
      * On cold start, if true, we route the user back to the player so they don't have to drill
      * back in. Updated whenever the current route changes.
@@ -95,7 +86,6 @@ class AppPreferences(context: Context) {
         const val KEY_ARTIST_DETAIL_SONG_SORT = "artist_detail_song_sort_order"
         const val KEY_PLAYLIST_SORT = "playlist_sort_order"
         const val KEY_SHUFFLE = "shuffle_enabled"
-        const val KEY_MUSIC_FOLDER_URI = "music_folder_tree_uri"
         const val KEY_PLAYER_ROUTE = "was_on_player_route"
         const val KEY_DISCOVERED_M3U_CACHE = "discovered_m3u_cache_tsv"
     }
