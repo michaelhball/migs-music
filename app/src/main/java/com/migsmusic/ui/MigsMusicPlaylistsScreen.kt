@@ -73,6 +73,14 @@ internal fun PlaylistsRoute(
     var showDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableLongStateOf(-1L) }
     val context = LocalContext.current
+    val snackbar = LocalSnackbarController.current
+
+    // Surface auto-import errors via the app-wide snackbar. The ViewModel emits one event
+    // per refresh that found problems (parse, IO, SAF revocation). "No matches" is filtered
+    // out — those just live in the AvailableM3uList below.
+    LaunchedEffect(playlistsViewModel) {
+        playlistsViewModel.importErrors.collect { snackbar.show(it) }
+    }
 
     val folderPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->

@@ -49,9 +49,12 @@ class AutoImportReceiver : BroadcastReceiver() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         scope.launch {
             try {
-                val unprocessed = app.appContainer.autoImportService.importAllInTree(treeUri)
-                if (unprocessed.isNotEmpty()) {
-                    Log.i(TAG, "${unprocessed.size} file(s) couldn't be auto-imported (zero matches / parse error)")
+                val summary = app.appContainer.autoImportService.importAllInTree(treeUri)
+                if (summary.failures.isNotEmpty()) {
+                    Log.w(TAG, "${summary.failures.size} file(s) failed during auto-import:")
+                    summary.failures.forEach { (file, reason) ->
+                        Log.w(TAG, "  ${file.displayName}: $reason")
+                    }
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "Auto-import failed", t)

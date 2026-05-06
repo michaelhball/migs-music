@@ -11,7 +11,37 @@ data class M3uMatchResult(
 data class MatchedSong(val entry: M3uEntry, val song: SongEntity)
 
 /**
- * Maps M3U entries to library songs.
+ * Pre-computed library indices used by [matchM3uEntries]. Build once per batch import
+ * (e.g. once for a Mac sync that lands several .m3u files at once) so we don't pay the
+ * O(N) library indexing cost per file.
+ */
+class M3uMatcherIndex(library: List<SongEntity>) {
+    val byArtistTitle: Map<Pair<String, String>, SongEntity> =
+        library.associateBy(
+            keySelector = { it.artist.lowercase().trim() to it.title.lowercase().trim() },
+            valueTransform = { it },
+        )
+    val byNormalizedArtistTitle: Map<Pair<String, String>, SongEntity> =
+        library.associateBy(
+            keySelector = { normalize(it.artist) to normalize(it.title) },
+            valueTransform = { it },
+        )
+
+    // Title-only normalized index, with deterministic disambiguation (alphabetical artist).
+    val byNormalizedTitle: Map<String, SongEntity> =
+        library
+            .sortedBy { it.artist.lowercase() }
+            .groupBy { normalize(it.title) }
+            .mapValues { it.value.first() }
+}
+
+fun matchM3uEntries(
+    entries: List<M3uEntry>,
+    library: List<SongEntity>,
+): M3uMatchResult = matchM3uEntries(entries, M3uMatcherIndex(library))
+
+/**
+ * Maps M3U entries to library songs using a pre-built [index].
  *
  * Three passes per entry, in order. Only the first hit wins:
  * 1. Exact case-insensitive (artist, title) match against `SongEntity.artist + .title`.
@@ -24,33 +54,15 @@ data class MatchedSong(val entry: M3uEntry, val song: SongEntity)
  */
 fun matchM3uEntries(
     entries: List<M3uEntry>,
-    library: List<SongEntity>,
+    index: M3uMatcherIndex,
 ): M3uMatchResult {
     if (entries.isEmpty()) return M3uMatchResult(emptyList(), emptyList())
-
-    // Pre-index the library three ways for O(1) lookup per entry.
-    val byArtistTitle: Map<Pair<String, String>, SongEntity> =
-        library.associateBy(
-            keySelector = { it.artist.lowercase().trim() to it.title.lowercase().trim() },
-            valueTransform = { it },
-        )
-    val byNormalizedArtistTitle: Map<Pair<String, String>, SongEntity> =
-        library.associateBy(
-            keySelector = { normalize(it.artist) to normalize(it.title) },
-            valueTransform = { it },
-        )
-    // Title-only normalized index, with deterministic disambiguation (alphabetical artist).
-    val byNormalizedTitle: Map<String, SongEntity> =
-        library
-            .sortedBy { it.artist.lowercase() }
-            .groupBy { normalize(it.title) }
-            .mapValues { it.value.first() }
 
     val matched = mutableListOf<MatchedSong>()
     val unmatched = mutableListOf<M3uEntry>()
 
     for (entry in entries) {
-        val hit = matchOne(entry, byArtistTitle, byNormalizedArtistTitle, byNormalizedTitle)
+        val hit = matchOne(entry, index.byArtistTitle, index.byNormalizedArtistTitle, index.byNormalizedTitle)
         if (hit != null) matched += MatchedSong(entry, hit) else unmatched += entry
     }
 

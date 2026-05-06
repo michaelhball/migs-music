@@ -17,9 +17,12 @@ import com.migsmusic.playlistimport.MatchedSong
 import com.migsmusic.playlistimport.matchM3uEntries
 import com.migsmusic.playlistimport.parseM3u
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -279,6 +282,23 @@ class PlaylistsViewModel(
     }
 
     /**
+     * Auto-import error events. The Playlists screen collects this and surfaces a snackbar
+     * so the user knows when something went wrong (parse error, IO error, SAF revocation).
+     * "No matches" is *not* an error — those files just stay in [availableM3uFiles] for the
+     * manual fallback flow.
+     */
+    private val _importErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val importErrors: SharedFlow<String> = _importErrors.asSharedFlow()
+
+    // Throttle for [refreshAvailableM3uFiles]: tab navigation re-fires LaunchedEffect on every
+    // entry, which previously re-walked SAF + snapshotted the library each time. Cache by
+    // tree URI + a 30s window so back-to-back tab visits don't pay the cost. The Mac sync's
+    // AUTO_IMPORT broadcast goes through AutoImportService directly and bypasses this cache,
+    // so manifest-driven prunes still happen immediately.
+    private var lastM3uRefreshAtMs: Long = 0L
+    private var lastM3uRefreshedTreeUriString: String? = null
+
+    /**
      * Persists the SAF tree URI the user just granted via [ActivityResultContracts.OpenDocumentTree],
      * after the caller has already taken a persistable read permission via the ContentResolver.
      */
@@ -307,21 +327,46 @@ class PlaylistsViewModel(
     fun refreshAvailableM3uFiles(
         context: Context,
         treeUri: Uri?,
+        force: Boolean = false,
     ) {
         if (treeUri == null) {
             _availableM3uFiles.value = emptyList()
             saveCachedM3uList(emptyList())
             return
         }
+        val uriString = treeUri.toString()
+        val now = System.currentTimeMillis()
+        if (!force &&
+            uriString == lastM3uRefreshedTreeUriString &&
+            now - lastM3uRefreshAtMs < REFRESH_THROTTLE_MS
+        ) {
+            return
+        }
+        lastM3uRefreshedTreeUriString = uriString
+        lastM3uRefreshAtMs = now
         viewModelScope.launch {
             // Delegate the heavy lifting to the application-scope AutoImportService — same
             // code path as the BroadcastReceiver-triggered auto-import from the Mac sync app.
-            // What we get back is just the leftovers (zero matches, parse errors) for the
-            // "Available to import" UI fallback.
-            val unprocessed = autoImportService.importAllInTree(treeUri)
-            _availableM3uFiles.value = unprocessed
-            saveCachedM3uList(unprocessed)
+            // What we get back is the summary: imported count, leftovers for the "Available
+            // to import" UI fallback, and per-file failures we want to surface in a snackbar.
+            val summary = autoImportService.importAllInTree(treeUri)
+            _availableM3uFiles.value = summary.unprocessed
+            saveCachedM3uList(summary.unprocessed)
+            if (summary.failures.isNotEmpty()) {
+                val message =
+                    if (summary.failures.size == 1) {
+                        val (file, reason) = summary.failures.first()
+                        "Couldn't import ${file.displayName}: $reason"
+                    } else {
+                        "Couldn't import ${summary.failures.size} M3U file(s) — see logcat"
+                    }
+                _importErrors.tryEmit(message)
+            }
         }
+    }
+
+    private companion object {
+        const val REFRESH_THROTTLE_MS = 30_000L
     }
 
     /**

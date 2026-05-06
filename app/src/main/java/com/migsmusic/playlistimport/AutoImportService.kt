@@ -13,6 +13,26 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
+ * Aggregate result of an auto-import batch. [unprocessed] is everything that didn't get
+ * absorbed into a synced playlist — UI surfaces it as "available to import" cards.
+ * [failures] is the strict subset that errored (parse / IO / SAF) rather than just having
+ * no matches; UI can show a snackbar for those because they indicate a real problem.
+ */
+data class ImportSummary(
+    val imported: Int,
+    val unprocessed: List<DiscoveredM3u>,
+    val failures: List<Pair<DiscoveredM3u, String>>,
+)
+
+private sealed interface SingleFileOutcome {
+    data object Imported : SingleFileOutcome
+
+    data object NoMatches : SingleFileOutcome
+
+    data class Failed(val reason: String) : SingleFileOutcome
+}
+
+/**
  * Walks a granted SAF tree, auto-imports every `.m3u` / `.m3u8` file it finds as a synced
  * playlist (replacing same-name synced playlists; never touching manual ones), and deletes
  * each consumed file from disk.
@@ -21,9 +41,6 @@ import kotlinx.coroutines.withContext
  * from anywhere — the Playlists ViewModel during normal UI flows, and a BroadcastReceiver
  * triggered remotely by the Mac sync app the moment it finishes pushing files. Both paths
  * call the same code, which keeps "what does auto-import mean" in one place.
- *
- * Returns the list of files that were *not* imported (zero matches, parse failure, IO
- * error). The caller can surface those for manual handling.
  */
 class AutoImportService(
     private val context: Context,
@@ -31,7 +48,7 @@ class AutoImportService(
     private val libraryRepository: LibraryRepository,
     private val playbackManager: PlaybackManager,
 ) {
-    suspend fun importAllInTree(treeUri: Uri): List<DiscoveredM3u> {
+    suspend fun importAllInTree(treeUri: Uri): ImportSummary {
         val files = scanForM3uFiles(context, treeUri)
         // Even if no m3u files were pushed this round, we still want to honor the manifest —
         // a sync that only deselects playlists pushes nothing but a manifest, and the receiver
@@ -44,13 +61,27 @@ class AutoImportService(
         // fired yet, and the deprecated MEDIA_SCANNER_SCAN_FILE broadcast no-ops on Android 11+).
         runCatching { libraryRepository.scanDevice() }
             .onFailure { Log.w(TAG, "pre-import scanDevice failed", it) }
-        // Snapshot the library once — the matcher pre-indexes from it, so re-running per
-        // file would just rebuild the same maps.
-        val library = libraryRepository.observeAllSongs().first()
+
+        var imported = 0
         val unprocessed = mutableListOf<DiscoveredM3u>()
-        for (file in files) {
-            if (!autoImportSingleFile(file, library)) {
-                unprocessed += file
+        val failures = mutableListOf<Pair<DiscoveredM3u, String>>()
+
+        if (files.isNotEmpty()) {
+            // Snapshot the library + build the matcher index ONCE, then reuse for every file.
+            // Each file's matcher pass would otherwise rebuild three maps over the full library
+            // — for a Mac sync landing 10 m3u's against a 5k-song library that's 30 redundant
+            // associateBy passes.
+            val library = libraryRepository.observeAllSongs().first()
+            val index = M3uMatcherIndex(library)
+            for (file in files) {
+                when (val outcome = autoImportSingleFile(file, index)) {
+                    SingleFileOutcome.Imported -> imported++
+                    SingleFileOutcome.NoMatches -> unprocessed += file
+                    is SingleFileOutcome.Failed -> {
+                        unprocessed += file
+                        failures += file to outcome.reason
+                    }
+                }
             }
         }
 
@@ -60,7 +91,7 @@ class AutoImportService(
         runCatching { pruneSyncedPlaylistsToManifest(treeUri) }
             .onFailure { Log.w(TAG, "manifest prune failed", it) }
 
-        return unprocessed
+        return ImportSummary(imported = imported, unprocessed = unprocessed, failures = failures)
     }
 
     /**
@@ -202,15 +233,18 @@ class AutoImportService(
     }
 
     /**
-     * Imports a single discovered file. Returns true if the file was successfully consumed
-     * (parsed, matched against the library, written into a synced playlist, source deleted).
-     * Returns false on any failure mode — the file is left on disk so the caller can decide
-     * what to surface to the user.
+     * Imports a single discovered file. Returns:
+     * - [SingleFileOutcome.Imported] — parsed, matched, written, source deleted.
+     * - [SingleFileOutcome.NoMatches] — parsed fine but no library songs matched. The file
+     *   is left on disk and surfaced via the "Available to import" UI fallback so the user
+     *   can decide what to do (typically: nothing, since songs aren't actually present).
+     * - [SingleFileOutcome.Failed] — IO error, parse error, or upsert exception. Returned
+     *   reason gets surfaced via snackbar so the user knows something's wrong.
      */
     private suspend fun autoImportSingleFile(
         file: DiscoveredM3u,
-        library: List<com.migsmusic.data.local.entity.SongEntity>,
-    ): Boolean =
+        index: M3uMatcherIndex,
+    ): SingleFileOutcome =
         runCatching {
             val content =
                 withContext(Dispatchers.IO) {
@@ -221,22 +255,25 @@ class AutoImportService(
                     // SD cards we haven't taught the path mapping for yet).
                     file.absolutePath?.let { java.io.File(it).readText() }
                         ?: context.contentResolver.openInputStream(file.uri)?.use { it.bufferedReader().readText() }
-                } ?: run {
-                    Log.w(TAG, "  content read returned null for ${file.displayName}")
-                    return@runCatching false
                 }
-            if (content.isBlank()) return@runCatching false
+            if (content == null) {
+                Log.w(TAG, "  content read returned null for ${file.displayName}")
+                return@runCatching SingleFileOutcome.Failed("could not read file")
+            }
+            if (content.isBlank()) {
+                return@runCatching SingleFileOutcome.Failed("file is empty")
+            }
 
             val matchResult =
                 withContext(Dispatchers.Default) {
-                    matchM3uEntries(parseM3u(content), library)
+                    matchM3uEntries(parseM3u(content), index)
                 }
             val songIds = matchResult.matched.map { it.song.id }
             Log.i(
                 TAG,
                 "${file.displayName}: matched=${matchResult.matched.size} unmatched=${matchResult.unmatched.size}",
             )
-            if (songIds.isEmpty()) return@runCatching false
+            if (songIds.isEmpty()) return@runCatching SingleFileOutcome.NoMatches
 
             val playlistName =
                 file.displayName.removeSuffix(".m3u").removeSuffix(".m3u8")
@@ -251,10 +288,10 @@ class AutoImportService(
                         .getOrDefault(false)
                 }
             if (!deleted) Log.w(TAG, "  source delete failed for ${file.displayName}")
-            true
+            SingleFileOutcome.Imported
         }.getOrElse {
             Log.w(TAG, "Auto-import failed for ${file.displayName}", it)
-            false
+            SingleFileOutcome.Failed(it.message ?: it.javaClass.simpleName)
         }
 
     private companion object {
