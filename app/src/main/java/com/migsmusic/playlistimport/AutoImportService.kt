@@ -1,15 +1,13 @@
 package com.migsmusic.playlistimport
 
 import android.content.Context
-import android.net.Uri
-import android.provider.DocumentsContract
 import android.util.Log
-import androidx.documentfile.provider.DocumentFile
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Aggregate result of an auto-import batch. [unprocessed] is everything that didn't get
@@ -48,12 +46,9 @@ class AutoImportService(
     private val libraryRepository: LibraryRepository,
     private val playbackController: PlaybackController,
 ) {
-    suspend fun importAllInTree(treeUri: Uri): ImportSummary {
-        val files = scanForM3uFiles(context, treeUri)
-        // Even if no m3u files were pushed this round, we still want to honor the manifest —
-        // a sync that only deselects playlists pushes nothing but a manifest, and the receiver
-        // needs to prune those.
-        Log.i(TAG, "importAllInTree: ${files.size} m3u file(s) found")
+    suspend fun importAll(): ImportSummary {
+        val files = scanForM3uFiles()
+        Log.i(TAG, "importAll: ${files.size} m3u file(s) found in $SYNC_DIR_PATH")
         // Force a fresh MediaStore → Room scan before reading the library snapshot. The Mac
         // sync flow pushes audio files via adb and broadcasts AUTO_IMPORT immediately after,
         // so without this step `observeAllSongs().first()` may return a stale view that's
@@ -65,9 +60,8 @@ class AutoImportService(
         // Read the sync manifest BEFORE per-file imports so we can honor the deleteOrphans
         // flag during each per-playlist replace — when an existing synced playlist's
         // contents change, songs that drop out of it (and aren't referenced by any other
-        // playlist) get their audio files cleaned up too. Without reading the manifest
-        // up front, we'd only clean orphans during whole-playlist removal.
-        val manifest = readSyncManifest(treeUri)
+        // playlist) get cleaned out of the library too.
+        val manifest = readSyncManifest()
         val deleteOrphans = manifest?.deleteOrphans == true
 
         var imported = 0
@@ -82,7 +76,7 @@ class AutoImportService(
             val library = libraryRepository.getAllSongsOnce()
             val index = M3uMatcherIndex(library)
             for (file in files) {
-                when (val outcome = autoImportSingleFile(file, index, treeUri, deleteOrphans)) {
+                when (val outcome = autoImportSingleFile(file, index, deleteOrphans)) {
                     SingleFileOutcome.Imported -> imported++
                     SingleFileOutcome.NoMatches -> unprocessed += file
                     is SingleFileOutcome.Failed -> {
@@ -96,12 +90,16 @@ class AutoImportService(
         // Apply manifest-driven prune (whole-playlist removal) using the manifest we already
         // parsed. Skips silently if no manifest was present this round.
         if (manifest != null) {
-            runCatching { applySyncManifest(treeUri, manifest) }
+            runCatching { applySyncManifest(manifest) }
                 .onFailure { Log.w(TAG, "manifest prune failed", it) }
         }
 
         return ImportSummary(imported = imported, unprocessed = unprocessed, failures = failures)
     }
+
+    /** Backwards-compat alias — pre-refactor callers passed a SAF treeUri we no longer need. */
+    @Deprecated("Use importAll() — sync directory is now hardcoded under app media dir.", ReplaceWith("importAll()"))
+    suspend fun importAllInTree(treeUri: android.net.Uri): ImportSummary = importAll()
 
     private data class ParsedManifest(
         val keepNames: Set<String>,
@@ -109,17 +107,14 @@ class AutoImportService(
     )
 
     /**
-     * Reads `<treeUri>/.migs-sync-manifest` if present. Returns null if absent or unreadable.
-     * Doesn't delete the file — that happens after the prune step in [applySyncManifest].
+     * Reads `<sync dir>/.migs-sync-manifest` if present. Returns null if absent.
+     * Doesn't delete — that happens after the prune step in [applySyncManifest].
      */
-    private suspend fun readSyncManifest(treeUri: Uri): ParsedManifest? {
-        val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, "primary:Music/.migs-sync-manifest")
+    private suspend fun readSyncManifest(): ParsedManifest? {
+        val file = File(SYNC_DIR_PATH, ".migs-sync-manifest")
         val text =
             withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(docUri)
-                        ?.use { it.bufferedReader().readText() }
-                }.getOrNull()
+                runCatching { if (file.exists()) file.readText() else null }.getOrNull()
             } ?: return null
 
         var deleteOrphans = false
@@ -150,10 +145,7 @@ class AutoImportService(
      * avoid leaving an orphan track in the mini-player (same behavior as the user-facing
      * delete flow in PlaylistsViewModel).
      */
-    private suspend fun applySyncManifest(
-        treeUri: Uri,
-        manifest: ParsedManifest,
-    ) {
+    private suspend fun applySyncManifest(manifest: ParsedManifest) {
         val syncedPlaylists = playlistRepository.getSyncedPlaylists()
         val toRemove = syncedPlaylists.filter { it.name !in manifest.keepNames }
         if (toRemove.isNotEmpty()) {
@@ -180,71 +172,34 @@ class AutoImportService(
             }
 
             if (orphanSongIds.isNotEmpty()) {
-                deleteOrphanAudioFiles(treeUri, orphanSongIds)
+                Log.i(TAG, "audio-cleanup: marking ${orphanSongIds.size} orphan song(s) for deletion via MediaStore")
+                requestOrphanAudioDeletion(orphanSongIds)
             }
         }
 
-        // Delete the manifest file via SAF — direct File.delete is blocked under scoped
-        // storage on /sdcard/Music for files we didn't create.
-        val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, "primary:Music/.migs-sync-manifest")
-        val deleted =
-            withContext(Dispatchers.IO) {
-                runCatching { DocumentFile.fromSingleUri(context, docUri)?.delete() ?: false }
-                    .getOrDefault(false)
-            }
-        if (!deleted) Log.w(TAG, "manifest delete failed at $docUri")
-    }
-
-    /**
-     * For each orphaned song id, look up the absolute file path via MediaStore, build the
-     * SAF doc URI under [treeUri] (which the user granted at /sdcard/Music), and delete the
-     * underlying file. Then drop the SongEntity rows from Room so the library doesn't show
-     * ghost entries that won't play.
-     *
-     * Best-effort per file: a delete failure for one orphan doesn't stop the others.
-     * Songs whose files live outside the granted tree (e.g. RELATIVE_PATH "Movies/..." for
-     * some weird MTP transfer) are skipped — we have no permission there.
-     */
-    private suspend fun deleteOrphanAudioFiles(
-        treeUri: Uri,
-        songIds: List<Long>,
-    ) {
-        val paths = libraryRepository.getSongAbsolutePaths(songIds)
-        if (paths.isEmpty()) return
-        Log.i(TAG, "audio-cleanup: ${paths.size} orphan file(s) to delete")
-        val deletedSongIds = mutableListOf<Long>()
-        for ((songId, absolutePath) in paths) {
-            val docUri = absolutePathToTreeDocUri(treeUri, absolutePath) ?: continue
-            val deleted =
-                withContext(Dispatchers.IO) {
-                    runCatching { DocumentFile.fromSingleUri(context, docUri)?.delete() ?: false }
-                        .getOrDefault(false)
-                }
-            if (deleted) {
-                deletedSongIds += songId
-            } else {
-                Log.w(TAG, "audio-cleanup: failed to delete $absolutePath")
-            }
-        }
-        if (deletedSongIds.isNotEmpty()) {
-            libraryRepository.deleteSongs(deletedSongIds)
+        // Delete the manifest file directly — it lives in our app's media dir so File.delete
+        // works without permissions.
+        withContext(Dispatchers.IO) {
+            runCatching { File(SYNC_DIR_PATH, ".migs-sync-manifest").delete() }
         }
     }
 
     /**
-     * Maps an absolute filesystem path under `/storage/emulated/0/<sub>` to a SAF document
-     * URI for [treeUri] (which is the granted Music tree, doc id `primary:Music`). Returns
-     * null if the path is outside the tree — we can't delete it via this grant.
+     * Drops the SongEntity rows for the given orphan song ids so the library doesn't show
+     * ghost entries pointing at songs that should no longer be there. Doesn't actually
+     * delete the audio files from disk — Android 11+ refuses to grant SAF write to
+     * `/sdcard/Music`, and we can't pop a `MediaStore.createDeleteRequest` confirmation
+     * dialog from a background BroadcastReceiver. Audio file deletion belongs in a future
+     * Settings screen that runs in the foreground and can show a system confirm.
      */
-    private fun absolutePathToTreeDocUri(
-        treeUri: Uri,
-        absolutePath: String,
-    ): Uri? {
-        val musicRoot = "/storage/emulated/0/Music/"
-        val rel = absolutePath.removePrefix(musicRoot)
-        if (rel == absolutePath) return null // path didn't start with /storage/emulated/0/Music/
-        val docId = "primary:Music/$rel"
-        return DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+    private suspend fun requestOrphanAudioDeletion(songIds: List<Long>) {
+        // Drop the SongEntity rows from Room so they don't show as ghost entries with no
+        // playable file. The actual audio file under /sdcard/Music remains until the user
+        // triggers a MediaStore delete request via the Settings UI (planned). Cleanest
+        // path that doesn't require SAF-on-Music (which Android refuses to grant) and
+        // doesn't pop a system dialog from a background BroadcastReceiver (illegal).
+        Log.i(TAG, "audio-cleanup: marking ${songIds.size} song row(s) as removed; files remain on disk")
+        libraryRepository.deleteSongs(songIds)
     }
 
     /**
@@ -259,19 +214,12 @@ class AutoImportService(
     internal suspend fun autoImportSingleFile(
         file: DiscoveredM3u,
         index: M3uMatcherIndex,
-        treeUri: Uri? = null,
         deleteOrphans: Boolean = false,
     ): SingleFileOutcome =
         runCatching {
             val content =
                 withContext(Dispatchers.IO) {
-                    // Prefer direct fs read when available — the OnePlus ExternalStorageProvider
-                    // returns 0 children for /sdcard/Music via SAF, but per-file content read
-                    // through the same provider works fine. Falling back to SAF on devices
-                    // where we couldn't get an absolutePath (cloud-provider trees, removable
-                    // SD cards we haven't taught the path mapping for yet).
-                    file.absolutePath?.let { java.io.File(it).readText() }
-                        ?: context.contentResolver.openInputStream(file.uri)?.use { it.bufferedReader().readText() }
+                    runCatching { File(file.absolutePath).readText() }.getOrNull()
                 }
             if (content == null) {
                 Log.w(TAG, "  content read returned null for ${file.displayName}")
@@ -308,26 +256,24 @@ class AutoImportService(
             // Per-song orphan cleanup: songs that were in the playlist before this sync but
             // aren't anymore, AND aren't referenced by any other playlist (synced or manual).
             // Gated on the deleteOrphans flag from the manifest. Catches the case where the
-            // user removes a song from a still-synced playlist on the Mac — the audio file
-            // would otherwise linger on the phone forever.
-            if (deleteOrphans && treeUri != null && priorSongIds.isNotEmpty()) {
+            // user removes a song from a still-synced playlist on the Mac.
+            if (deleteOrphans && priorSongIds.isNotEmpty()) {
                 val removed = priorSongIds - newSongIds.toSet()
                 if (removed.isNotEmpty()) {
                     val nowOrphan =
                         removed.filter { songId -> playlistRepository.songIsUnreferenced(songId) }
                     if (nowOrphan.isNotEmpty()) {
                         Log.i(TAG, "  per-song cleanup: ${nowOrphan.size} removed song(s) now orphan")
-                        deleteOrphanAudioFiles(treeUri, nowOrphan)
+                        requestOrphanAudioDeletion(nowOrphan)
                     }
                 }
             }
 
-            // Best-effort delete. SAF delete via the constructed document URI works on
-            // OnePlus even though SAF *listing* is broken — confirmed via a write-probe test.
+            // Delete the M3U file directly — it lives under our app media dir so File.delete
+            // works without permissions.
             val deleted =
                 withContext(Dispatchers.IO) {
-                    runCatching { DocumentFile.fromSingleUri(context, file.uri)?.delete() ?: false }
-                        .getOrDefault(false)
+                    runCatching { File(file.absolutePath).delete() }.getOrDefault(false)
                 }
             if (!deleted) Log.w(TAG, "  source delete failed for ${file.displayName}")
             SingleFileOutcome.Imported

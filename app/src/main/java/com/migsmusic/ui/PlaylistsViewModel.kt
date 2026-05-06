@@ -258,14 +258,10 @@ class PlaylistsViewModel(
         }
     }
 
-    // ---- Auto-detected M3U files in the user's Music folder ----
+    // ---- Auto-detected M3U files in the app's sync directory ----
 
-    private val _musicFolderUri = MutableStateFlow(preferences.musicFolderTreeUri?.let(Uri::parse))
-    val musicFolderUri: StateFlow<Uri?> = _musicFolderUri.asStateFlow()
-
-    // Seed from the persisted cache so the Playlists tab shows the previously-discovered list
-    // immediately on cold start. The next refreshAvailableM3uFiles() call walks SAF in the
-    // background and updates this if anything's changed.
+    // Seed from the persisted cache so the Playlists tab shows the previously-discovered
+    // list immediately on cold start. Next refreshAvailableM3uFiles() updates it.
     private val _availableM3uFiles = MutableStateFlow<List<DiscoveredM3u>>(loadCachedM3uList())
     val availableM3uFiles: StateFlow<List<DiscoveredM3u>> = _availableM3uFiles.asStateFlow()
 
@@ -274,8 +270,12 @@ class PlaylistsViewModel(
             .lineSequence()
             .mapNotNull { line ->
                 val parts = line.split('\t')
-                if (parts.size == 2 && parts[0].isNotBlank()) {
-                    DiscoveredM3u(uri = Uri.parse(parts[0]), displayName = parts[1])
+                if (parts.size >= 2 && parts[0].isNotBlank()) {
+                    DiscoveredM3u(
+                        uri = Uri.parse(parts[0]),
+                        displayName = parts[1],
+                        absolutePath = parts.getOrNull(2) ?: "",
+                    )
                 } else {
                     null
                 }
@@ -284,78 +284,32 @@ class PlaylistsViewModel(
 
     private fun saveCachedM3uList(items: List<DiscoveredM3u>) {
         preferences.cachedDiscoveredM3uTsv =
-            items.joinToString(separator = "\n") { "${it.uri}\t${it.displayName}" }
+            items.joinToString(separator = "\n") { "${it.uri}\t${it.displayName}\t${it.absolutePath}" }
     }
 
     /**
-     * Auto-import error events. The Playlists screen collects this and surfaces a snackbar
-     * so the user knows when something went wrong (parse error, IO error, SAF revocation).
-     * "No matches" is *not* an error — those files just stay in [availableM3uFiles] for the
-     * manual fallback flow.
+     * Auto-import error events surfaced to the Playlists screen as snackbars. "No matches"
+     * is not an error — those files stay in [availableM3uFiles] for the manual fallback.
      */
     private val _importErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val importErrors: SharedFlow<String> = _importErrors.asSharedFlow()
 
-    // Throttle for [refreshAvailableM3uFiles]: tab navigation re-fires LaunchedEffect on every
-    // entry, which previously re-walked SAF + snapshotted the library each time. Cache by
-    // tree URI + a 30s window so back-to-back tab visits don't pay the cost. The Mac sync's
-    // AUTO_IMPORT broadcast goes through AutoImportService directly and bypasses this cache,
-    // so manifest-driven prunes still happen immediately.
+    // Throttle for [refreshAvailableM3uFiles]: tab navigation re-fires LaunchedEffect on
+    // every entry. The 30s window keeps back-to-back tab visits cheap. The Mac sync's
+    // AUTO_IMPORT broadcast goes through AutoImportService directly and bypasses this.
     private var lastM3uRefreshAtMs: Long = 0L
-    private var lastM3uRefreshedTreeUriString: String? = null
 
     /**
-     * Persists the SAF tree URI the user just granted via [ActivityResultContracts.OpenDocumentTree],
-     * after the caller has already taken a persistable read permission via the ContentResolver.
+     * Scans the app sync directory for `.m3u` / `.m3u8` files, auto-imports them, and
+     * surfaces anything left over as "Available to import". Throttled at [REFRESH_THROTTLE_MS]
+     * so back-to-back tab navigations don't re-walk for nothing.
      */
-    fun setMusicFolderUri(uri: Uri?) {
-        preferences.musicFolderTreeUri = uri?.toString()
-        _musicFolderUri.value = uri
-    }
-
-    /**
-     * Scans the SAF tree at [treeUri] for `.m3u` / `.m3u8` files, *auto-imports each one*
-     * as a synced playlist (replacing same-name synced playlists if they exist), then
-     * deletes the file from disk. The remaining set — files we couldn't import (no
-     * matching songs, parse failure) — populates [availableM3uFiles] so the user can
-     * decide what to do via the manual UI.
-     *
-     * In normal sync use the user never sees the "Available to import" list because every
-     * file gets absorbed silently. The list is a fallback for unhappy cases.
-     *
-     * Sync semantics: an M3U named `Workout.m3u` always lands in the same synced playlist
-     * row, even if the user has manually reordered or renamed it on the phone — the
-     * auto-import will replace its contents. Manual playlists with the same name are not
-     * touched (they're a different DB row).
-     *
-     * No-op when [treeUri] is null (user hasn't granted folder access yet).
-     */
-    fun refreshAvailableM3uFiles(
-        context: Context,
-        treeUri: Uri?,
-        force: Boolean = false,
-    ) {
-        if (treeUri == null) {
-            _availableM3uFiles.value = emptyList()
-            saveCachedM3uList(emptyList())
-            return
-        }
-        val uriString = treeUri.toString()
+    fun refreshAvailableM3uFiles(force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (!force &&
-            uriString == lastM3uRefreshedTreeUriString &&
-            now - lastM3uRefreshAtMs < REFRESH_THROTTLE_MS
-        ) {
-            return
-        }
-        lastM3uRefreshedTreeUriString = uriString
+        if (!force && now - lastM3uRefreshAtMs < REFRESH_THROTTLE_MS) return
         lastM3uRefreshAtMs = now
         viewModelScope.launch {
-            // Delegate the heavy lifting to the application-scope AutoImportService — same
-            // code path as the BroadcastReceiver-triggered auto-import from the Mac sync app.
-            // What we get back is the summary: imported count, leftovers for the "Available
-            // to import" UI fallback, and per-file failures we want to surface in a snackbar.
-            val summary = autoImportService.importAllInTree(treeUri)
+            val summary = autoImportService.importAll()
             _availableM3uFiles.value = summary.unprocessed
             saveCachedM3uList(summary.unprocessed)
             if (summary.failures.isNotEmpty()) {
