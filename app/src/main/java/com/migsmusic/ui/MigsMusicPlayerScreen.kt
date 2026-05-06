@@ -105,52 +105,60 @@ internal fun PlayerRoute(
         )
     }
 
+    // Drag gestures are scoped to the album art only, NOT the whole screen. Previously they
+    // sat on the outer Box, which meant a horizontal drag starting near the Slider's edge
+    // could be claimed by the outer detector before the Slider — slider stayed at its old
+    // value while the queue advanced. Restricting drag to the album-art region keeps the
+    // "swipe to skip / dismiss" UX without competing with the slider hit area.
+    val albumArtDragModifier =
+        Modifier.pointerInput(Unit) {
+            detectDragGestures(
+                onDragStart = {
+                    dragX = 0f
+                    dragY = 0f
+                    dragCommitted = false
+                },
+                onDragEnd = {
+                    dragX = 0f
+                    dragY = 0f
+                    dragCommitted = false
+                },
+                onDragCancel = {
+                    dragX = 0f
+                    dragY = 0f
+                    dragCommitted = false
+                },
+                onDrag = { _, drag ->
+                    if (dragCommitted) return@detectDragGestures
+                    dragX += drag.x
+                    dragY += drag.y
+                    // Pick whichever axis crossed its threshold first.
+                    when {
+                        dragY >= dismissThresholdPx && dragY > kotlin.math.abs(dragX) -> {
+                            dragCommitted = true
+                            onDismiss()
+                        }
+                        dragX <= -skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
+                            dragCommitted = true
+                            playerViewModel.skipToNext()
+                        }
+                        dragX >= skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
+                            dragCommitted = true
+                            playerViewModel.skipToPrevious()
+                        }
+                    }
+                },
+            )
+        }
+
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .testTag(UiTestTags.PlayerScreen)
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = {
-                            dragX = 0f
-                            dragY = 0f
-                            dragCommitted = false
-                        },
-                        onDragEnd = {
-                            dragX = 0f
-                            dragY = 0f
-                            dragCommitted = false
-                        },
-                        onDragCancel = {
-                            dragX = 0f
-                            dragY = 0f
-                            dragCommitted = false
-                        },
-                        onDrag = { _, drag ->
-                            if (dragCommitted) return@detectDragGestures
-                            dragX += drag.x
-                            dragY += drag.y
-                            // Pick whichever axis crossed its threshold first.
-                            when {
-                                dragY >= dismissThresholdPx && dragY > kotlin.math.abs(dragX) -> {
-                                    dragCommitted = true
-                                    onDismiss()
-                                }
-                                dragX <= -skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
-                                    dragCommitted = true
-                                    playerViewModel.skipToNext()
-                                }
-                                dragX >= skipThresholdPx && kotlin.math.abs(dragX) > kotlin.math.abs(dragY) -> {
-                                    dragCommitted = true
-                                    playerViewModel.skipToPrevious()
-                                }
-                            }
-                        },
-                    )
-                }
-                // Separate pointerInput for tap detection — long-press opens the context menu.
-                // Two pointerInputs coexist via Compose's pointer event dispatch.
+                // Long-press anywhere on the player opens the context menu. detectTapGestures
+                // doesn't claim drags, so this happily coexists with the Slider below and the
+                // album-art drag handler above.
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onLongPress = { contextMenuOpen = true },
@@ -218,6 +226,7 @@ internal fun PlayerRoute(
                     Modifier
                         .size(220.dp)
                         .clip(MaterialTheme.shapes.large)
+                        .then(albumArtDragModifier)
                         .testTag(UiTestTags.PlayerAlbumArt),
             )
             Column(
