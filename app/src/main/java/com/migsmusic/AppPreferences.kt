@@ -66,6 +66,18 @@ class AppPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_PLAYER_ROUTE, false)
         set(value) = prefs.edit { putBoolean(KEY_PLAYER_ROUTE, value) }
 
+    /**
+     * Cached list of `.m3u` / `.m3u8` files discovered under the user's Music folder, persisted
+     * across cold starts so the Playlists tab can show them instantly while the SAF tree walk
+     * runs in the background. Stored as a newline-separated TSV (`uri\tdisplayName` per row);
+     * we use TSV instead of JSON to avoid an extra dependency and keep parsing trivial — both
+     * URIs and display names are URL-safe enough that a real `\t` or `\n` in either is
+     * vanishingly rare. Defensive parsing skips any row that doesn't have exactly two fields.
+     */
+    var cachedDiscoveredM3uTsv: String
+        get() = prefs.getString(KEY_DISCOVERED_M3U_CACHE, null).orEmpty()
+        set(value) = prefs.edit { putString(KEY_DISCOVERED_M3U_CACHE, value) }
+
     private companion object {
         const val KEY_SONG_SORT = "song_sort_order"
         const val KEY_ALBUM_SORT = "album_sort_order"
@@ -74,5 +86,6 @@ class AppPreferences(context: Context) {
         const val KEY_SHUFFLE = "shuffle_enabled"
         const val KEY_MUSIC_FOLDER_URI = "music_folder_tree_uri"
         const val KEY_PLAYER_ROUTE = "was_on_player_route"
+        const val KEY_DISCOVERED_M3U_CACHE = "discovered_m3u_cache_tsv"
     }
 }

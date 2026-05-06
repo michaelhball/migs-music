@@ -240,8 +240,29 @@ class PlaylistsViewModel(
     private val _musicFolderUri = MutableStateFlow(preferences.musicFolderTreeUri?.let(Uri::parse))
     val musicFolderUri: StateFlow<Uri?> = _musicFolderUri.asStateFlow()
 
-    private val _availableM3uFiles = MutableStateFlow<List<DiscoveredM3u>>(emptyList())
+    // Seed from the persisted cache so the Playlists tab shows the previously-discovered list
+    // immediately on cold start. The next refreshAvailableM3uFiles() call walks SAF in the
+    // background and updates this if anything's changed.
+    private val _availableM3uFiles = MutableStateFlow<List<DiscoveredM3u>>(loadCachedM3uList())
     val availableM3uFiles: StateFlow<List<DiscoveredM3u>> = _availableM3uFiles.asStateFlow()
+
+    private fun loadCachedM3uList(): List<DiscoveredM3u> =
+        preferences.cachedDiscoveredM3uTsv
+            .lineSequence()
+            .mapNotNull { line ->
+                val parts = line.split('\t')
+                if (parts.size == 2 && parts[0].isNotBlank()) {
+                    DiscoveredM3u(uri = Uri.parse(parts[0]), displayName = parts[1])
+                } else {
+                    null
+                }
+            }
+            .toList()
+
+    private fun saveCachedM3uList(items: List<DiscoveredM3u>) {
+        preferences.cachedDiscoveredM3uTsv =
+            items.joinToString(separator = "\n") { "${it.uri}\t${it.displayName}" }
+    }
 
     /**
      * Persists the SAF tree URI the user just granted via [ActivityResultContracts.OpenDocumentTree],
@@ -263,10 +284,15 @@ class PlaylistsViewModel(
     ) {
         if (treeUri == null) {
             _availableM3uFiles.value = emptyList()
+            saveCachedM3uList(emptyList())
             return
         }
         viewModelScope.launch {
-            _availableM3uFiles.value = scanForM3uFiles(context, treeUri)
+            val fresh = scanForM3uFiles(context, treeUri)
+            _availableM3uFiles.value = fresh
+            // Persist so the next cold start renders this list instantly without waiting
+            // for SAF to walk the tree again.
+            saveCachedM3uList(fresh)
         }
     }
 
