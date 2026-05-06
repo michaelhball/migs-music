@@ -67,6 +67,7 @@ object UiTestTags {
     const val M3uAvailableRow = "m3u_available_row"
     const val M3uAvailableImportButton = "m3u_available_import_button"
     const val PlaylistRow = "playlist_row"
+    const val PlaylistRowMenu = "playlist_row_menu"
     const val PlaylistRenameButton = "playlist_rename"
     const val PlaylistDeleteButton = "playlist_delete"
     const val PlaylistDetailBack = "playlist_detail_back"

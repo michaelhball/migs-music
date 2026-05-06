@@ -20,7 +20,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -137,12 +136,10 @@ fun MigsMusicApp(
         Scaffold(
             modifier = Modifier.testTag(UiTestTags.AppRoot),
             snackbarHost = { SnackbarHost(snackbarHostState) },
-            topBar = {
-                // Hide the top bar on the full-screen player so the player owns the whole screen.
-                if (!onPlayerRoute) {
-                    TopAppBar(title = { Text(text = "MIGS Music") })
-                }
-            },
+            // No app-level TopAppBar: the system's task switcher / status bar already
+            // shows the app name, and individual screens that need their own titles
+            // (e.g. PlaylistDetailRoute) render them inline. A redundant "MIGS Music"
+            // bar here just duplicated the system label and ate ~64dp of vertical space.
             bottomBar = {
                 // Same: hide the mini-player + nav bar while the full-screen player is up.
                 // It's redundant (the player is already showing) and consumes ~120dp of room.

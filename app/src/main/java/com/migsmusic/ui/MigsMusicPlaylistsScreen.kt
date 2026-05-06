@@ -26,7 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -235,26 +234,11 @@ internal fun PlaylistsRoute(
             }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(playlists, key = { _, item -> item.id }) { _, playlist ->
-                    ListRow(
-                        title = playlist.name,
-                        subtitle = "${playlist.songCount} songs",
-                        modifier =
-                            Modifier
-                                .testTag(UiTestTags.PlaylistRow)
-                                .clickable { onOpenPlaylist(playlist.id) },
-                        actions = {
-                            SmallActionButton(
-                                label = "Rename",
-                                modifier = Modifier.testTag(UiTestTags.PlaylistRenameButton),
-                                onClick = { renameTarget = playlist.id },
-                            )
-                            IconButton(
-                                onClick = { playlistsViewModel.deletePlaylist(playlist.id) },
-                                modifier = Modifier.testTag(UiTestTags.PlaylistDeleteButton),
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete playlist")
-                            }
-                        },
+                    PlaylistListRow(
+                        playlist = playlist,
+                        onOpen = { onOpenPlaylist(playlist.id) },
+                        onRename = { renameTarget = playlist.id },
+                        onDelete = { playlistsViewModel.deletePlaylist(playlist.id) },
                     )
                     HorizontalDivider()
                 }
@@ -446,7 +430,14 @@ private fun AvailableM3uList(
                 }
             }
         }
-        HorizontalDivider()
+        // Visually separate the auto-detected files from the user's actual playlists below.
+        // A simple divider + section header for the playlists makes the two groups distinct.
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        SectionHeader("Your playlists")
     }
 }
 
@@ -625,6 +616,55 @@ internal fun PlaylistDetailRoute(
                 }
                 HorizontalDivider()
             }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistListRow(
+    playlist: com.migsmusic.data.local.model.PlaylistSummary,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        ListRow(
+            title = playlist.name,
+            subtitle = "${playlist.songCount} songs",
+            modifier =
+                Modifier
+                    .testTag(UiTestTags.PlaylistRow)
+                    .clickable(onClick = onOpen),
+            actions = {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.testTag(UiTestTags.PlaylistRowMenu),
+                ) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More")
+                }
+            },
+        )
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Rename") },
+                onClick = {
+                    menuOpen = false
+                    onRename()
+                },
+                modifier = Modifier.testTag(UiTestTags.PlaylistRenameButton),
+            )
+            DropdownMenuItem(
+                text = { Text("Delete playlist") },
+                onClick = {
+                    menuOpen = false
+                    onDelete()
+                },
+                modifier = Modifier.testTag(UiTestTags.PlaylistDeleteButton),
+            )
         }
     }
 }
