@@ -26,6 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -261,7 +264,16 @@ private fun FolderBreadcrumb(
                     Modifier
                         .testTag(UiTestTags.FolderBreadcrumbSegment)
                         .let { base ->
-                            if (isLast) base else base.clickable { onNavigateToFolder(pathToHere) }
+                            if (isLast) {
+                                base
+                            } else {
+                                // Mark non-last segments as buttons so TalkBack announces
+                                // "double-tap to navigate" — without role=Button it reads
+                                // them as static text and the user has no clue they're tappable.
+                                base
+                                    .clickable { onNavigateToFolder(pathToHere) }
+                                    .semantics { role = Role.Button }
+                            }
                         }
                         .padding(horizontal = 4.dp, vertical = 4.dp),
             )

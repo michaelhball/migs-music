@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,6 +17,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.content.PermissionChecker
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.migsmusic.ui.MigsMusicApp
 import com.migsmusic.ui.theme.MigsMusicTheme
 
@@ -57,6 +61,22 @@ class MainActivity : ComponentActivity() {
                 // up-front. Idempotent (the system remembers the answer); no-op pre-T.
                 LaunchedEffect(hasPermission) {
                     if (hasPermission) maybeRequestPostNotifications()
+                }
+
+                // Re-check the media permission whenever we resume — covers the case where
+                // the user denied via our prompt, opened system Settings, granted there, and
+                // came back. Without this hook the in-memory `hasPermission` stays false
+                // until next cold start and the user sits on the PermissionGate forever.
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer =
+                        LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) {
+                                hasPermission = checkMusicPermission()
+                            }
+                        }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                 }
             }
         }

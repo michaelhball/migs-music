@@ -131,8 +131,15 @@ internal fun AlbumArtImage(
     contentDescription: String? = null,
 ) {
     val context = LocalContext.current
+    val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    // ColorPainter is cheap to construct but we render N of these on every list scroll;
+    // remember it per-color so we don't allocate on every recomposition.
+    val errorPainter =
+        remember(placeholderColor) {
+            androidx.compose.ui.graphics.painter.ColorPainter(placeholderColor)
+        }
     Box(
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        modifier = modifier.background(placeholderColor),
         contentAlignment = Alignment.Center,
     ) {
         if (uri.isNullOrBlank()) {
@@ -152,10 +159,7 @@ internal fun AlbumArtImage(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
-                error =
-                    androidx.compose.ui.graphics.painter.ColorPainter(
-                        MaterialTheme.colorScheme.surfaceContainerHighest,
-                    ),
+                error = errorPainter,
             )
         }
     }

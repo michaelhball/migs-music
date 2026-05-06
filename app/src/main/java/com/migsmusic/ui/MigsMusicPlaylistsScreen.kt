@@ -429,10 +429,10 @@ internal fun PlaylistDetailRoute(
     currentSongId: Long?,
     onGoBack: () -> Unit,
 ) {
-    // playlistSongs() creates a new StateFlow each call; remember by id so we don't
-    // spin a recomposition loop (the new flow re-emits emptyList -> recompose -> new flow ...).
+    // Remember the cold Flow by playlistId so we keep the same subscription across
+    // recompositions; collectAsStateWithLifecycle disposes it when the screen leaves.
     val songsFlow = remember(playlistId) { playlistsViewModel.playlistSongs(playlistId) }
-    val songsRaw by songsFlow.collectAsStateWithLifecycle()
+    val songsRaw by songsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val playlists by playlistsViewModel.playlists.collectAsStateWithLifecycle()
     val snackbar = LocalSnackbarController.current
     var renameDialogVisible by remember { mutableStateOf(false) }
@@ -440,14 +440,20 @@ internal fun PlaylistDetailRoute(
     // order songs were added). Other options only change what's rendered — they don't mutate
     // playlist_songs.position, so picking DEFAULT always restores the canonical order.
     var contentSort by remember(playlistId) { mutableStateOf(PlaylistContentSortOrder.DEFAULT) }
+    // Cache the sorted view; re-runs only when the upstream list reference or the chosen
+    // sort changes. Comparators use String.CASE_INSENSITIVE_ORDER instead of `.lowercase()`
+    // selectors to avoid per-comparison string allocation under frequent re-sorts.
     val songs =
         remember(songsRaw, contentSort) {
+            val ci: Comparator<String> = String.CASE_INSENSITIVE_ORDER
             when (contentSort) {
                 PlaylistContentSortOrder.DEFAULT -> songsRaw
-                PlaylistContentSortOrder.TITLE_ASC -> songsRaw.sortedBy { it.title.lowercase() }
-                PlaylistContentSortOrder.TITLE_DESC -> songsRaw.sortedByDescending { it.title.lowercase() }
+                PlaylistContentSortOrder.TITLE_ASC ->
+                    songsRaw.sortedWith(compareBy<PlaylistSong, String>(ci) { it.title })
+                PlaylistContentSortOrder.TITLE_DESC ->
+                    songsRaw.sortedWith(compareByDescending<PlaylistSong, String>(ci) { it.title })
                 PlaylistContentSortOrder.ARTIST_ASC ->
-                    songsRaw.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
+                    songsRaw.sortedWith(compareBy<PlaylistSong, String>(ci) { it.artist }.thenBy(ci) { it.title })
                 PlaylistContentSortOrder.DURATION_ASC -> songsRaw.sortedBy { it.durationMs }
                 PlaylistContentSortOrder.DURATION_DESC -> songsRaw.sortedByDescending { it.durationMs }
             }

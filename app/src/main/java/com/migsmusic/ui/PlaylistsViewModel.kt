@@ -17,6 +17,7 @@ import com.migsmusic.playlistimport.MatchedSong
 import com.migsmusic.playlistimport.matchM3uEntries
 import com.migsmusic.playlistimport.parseM3u
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -96,9 +97,15 @@ class PlaylistsViewModel(
                 items.sortedWith(compareByDescending<PlaylistSummary> { it.songCount }.thenBy { it.name.lowercase() })
         }
 
-    fun playlistSongs(playlistId: Long): StateFlow<List<PlaylistSong>> =
-        playlistRepository.observePlaylistSongs(playlistId)
-            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    /**
+     * Cold flow of songs in a playlist. Returning a cold Flow (rather than a StateFlow via
+     * stateIn(viewModelScope, Lazily)) avoids a memory leak — every call to the old version
+     * spawned a fresh StateFlow that stayed alive in viewModelScope forever, accumulating
+     * orphan upstream collectors per playlist as the user re-navigated. The caller's
+     * `collectAsStateWithLifecycle` is lifecycle-scoped, so the upstream subscription is
+     * auto-disposed when the screen leaves composition.
+     */
+    fun playlistSongs(playlistId: Long): Flow<List<PlaylistSong>> = playlistRepository.observePlaylistSongs(playlistId)
 
     fun createPlaylist(name: String) {
         if (name.isBlank()) return

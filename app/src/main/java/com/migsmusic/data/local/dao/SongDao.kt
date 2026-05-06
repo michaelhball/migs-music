@@ -2,6 +2,7 @@ package com.migsmusic.data.local.dao
 
 import androidx.room.Dao
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.local.model.AlbumSummary
@@ -146,6 +147,18 @@ interface SongDao {
     // the row identity stable, so foreign-key dependents survive.
     @Upsert
     suspend fun upsertAll(songs: List<SongEntity>)
+
+    /**
+     * Chunked upsert wrapped in a single Room transaction. The library scan splits the full
+     * MediaStore song list into chunks (memory pressure on large libraries), but without a
+     * surrounding transaction each chunk's upsert was its own implicit transaction → one
+     * fsync per chunk → ~5-10× more disk traffic on a 5k-song scan than necessary. Wrap the
+     * loop so we get one commit at the end.
+     */
+    @Transaction
+    suspend fun upsertAllChunked(chunks: List<List<SongEntity>>) {
+        for (chunk in chunks) upsertAll(chunk)
+    }
 
     @Query("DELETE FROM songs")
     suspend fun clearAll()

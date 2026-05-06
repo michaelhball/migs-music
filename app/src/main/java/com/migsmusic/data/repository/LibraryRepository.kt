@@ -257,9 +257,12 @@ class LibraryRepository(
                 return@withContext 0
             }
 
-            // Chunk the upsert so a 50k-song library doesn't pin a single all-or-nothing transaction
-            // (and a single huge SQLite statement) — the small per-chunk overhead is well worth it.
-            songs.chunked(UPSERT_CHUNK_SIZE).forEach { chunk -> songDao.upsertAll(chunk) }
+            // Chunk the upsert so a 50k-song library doesn't pin a single all-or-nothing
+            // transaction (and a single huge SQLite statement). [SongDao.upsertAllChunked]
+            // wraps the per-chunk loop in ONE Room transaction so we still get a single
+            // commit + fsync at the end — without it each chunk was its own implicit
+            // transaction, multiplying disk traffic ~5-10× on cold-start scans.
+            songDao.upsertAllChunked(songs.chunked(UPSERT_CHUNK_SIZE))
             // pruneMissingSongs() is intentionally NOT called here. It used to delete any song
             // whose MediaStore _ID didn't appear in the latest scan, but MediaScanner can
             // briefly drop a file's IS_MUSIC flag while re-reading its tags — making the file
