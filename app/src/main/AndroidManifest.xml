@@ -34,6 +34,21 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
+        <!--
+            Triggered by `adb shell am broadcast -a com.migsmusic.AUTO_IMPORT -p com.migsmusic`,
+            sent by the Mac companion app to push a playlist sync. Manifest-declared so the
+            broadcast wakes the app even if it's not currently running. android:exported=true
+            because adb shell sends as the shell user (a different uid than ours); the action
+            string is namespaced enough that it's not a meaningful attack surface.
+        -->
+        <receiver
+            android:name=".playlistimport.AutoImportReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.migsmusic.AUTO_IMPORT" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

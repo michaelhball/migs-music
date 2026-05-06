@@ -72,6 +72,7 @@ fun MigsMusicApp(
                         libraryRepository = appContainer.libraryRepository,
                         playbackManager = appContainer.playbackManager,
                         preferences = appContainer.preferences,
+                        autoImportService = appContainer.autoImportService,
                     )
                 },
         )

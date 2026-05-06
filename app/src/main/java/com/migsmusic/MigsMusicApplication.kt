@@ -15,6 +15,7 @@ import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaybackSessionRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackManager
+import com.migsmusic.playlistimport.AutoImportService
 
 class MigsMusicApplication : Application(), ImageLoaderFactory {
     lateinit var appContainer: AppContainer
@@ -53,6 +54,13 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
 
         val preferences = AppPreferences(applicationContext)
 
+        val autoImportService =
+            AutoImportService(
+                context = applicationContext,
+                playlistRepository = playlistRepository,
+                libraryRepository = libraryRepository,
+            )
+
         appContainer =
             AppContainer(
                 libraryRepository = libraryRepository,
@@ -65,6 +73,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
                         preferences = preferences,
                     ),
                 preferences = preferences,
+                autoImportService = autoImportService,
             )
 
         // Watch MediaStore for new audio files; auto-rescan when changes settle so the user
@@ -106,4 +115,5 @@ data class AppContainer(
     val playlistRepository: PlaylistRepository,
     val playbackManager: PlaybackManager,
     val preferences: AppPreferences,
+    val autoImportService: AutoImportService,
 )
