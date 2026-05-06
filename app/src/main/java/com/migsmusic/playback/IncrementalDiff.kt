@@ -74,22 +74,45 @@ fun computeIncrementalDiff(
         return IncrementalDiff.Remove(at)
     }
 
-    // Single move: same size, one entry slid from `from` to `to`.
+    // Single move: same size, one entry slid from `from` to `to`. Handles both directions
+    // (forward shifts and backward shifts), including multi-position moves like 3→7 in a
+    // 10-item queue. Try both interpretations of the disagreement range; if neither
+    // reconstructs newIds, fall back to FullRebuild.
     if (newIds.size == playerSnapshot.size) {
         val firstDiff =
             newIds.indices.firstOrNull { playerSnapshot[it] != newIds[it] }
                 ?: return IncrementalDiff.NoOp
-        val movedEntryId = playerSnapshot[firstDiff]
-        val newPos = newIds.indexOf(movedEntryId)
-        if (newPos == -1) return IncrementalDiff.FullRebuild
-        val rebuilt =
+        val lastDiff = newIds.indices.reversed().first { playerSnapshot[it] != newIds[it] }
+
+        // Interpretation 1: the item at playerSnapshot[firstDiff] moved forward to lastDiff,
+        // which shifts everything in between back by one.
+        val movedForward = playerSnapshot[firstDiff]
+        val rebuiltForward =
             playerSnapshot.toMutableList().apply {
                 removeAt(firstDiff)
-                add(newPos, movedEntryId)
+                add(lastDiff, movedForward)
             }
-        if (rebuilt != newIds) return IncrementalDiff.FullRebuild
-        if (firstDiff == currentIndex || newPos == currentIndex) return IncrementalDiff.FullRebuild
-        return IncrementalDiff.Move(from = firstDiff, to = newPos)
+        if (rebuiltForward == newIds) {
+            // The shift range is [firstDiff..lastDiff] inclusive. If currentIndex falls
+            // anywhere inside, the playing track moves position — full rebuild is safer.
+            if (currentIndex in firstDiff..lastDiff) return IncrementalDiff.FullRebuild
+            return IncrementalDiff.Move(from = firstDiff, to = lastDiff)
+        }
+
+        // Interpretation 2: the item at playerSnapshot[lastDiff] moved backward to firstDiff,
+        // shifting everything in between forward by one.
+        val movedBackward = playerSnapshot[lastDiff]
+        val rebuiltBackward =
+            playerSnapshot.toMutableList().apply {
+                removeAt(lastDiff)
+                add(firstDiff, movedBackward)
+            }
+        if (rebuiltBackward == newIds) {
+            if (currentIndex in firstDiff..lastDiff) return IncrementalDiff.FullRebuild
+            return IncrementalDiff.Move(from = lastDiff, to = firstDiff)
+        }
+
+        return IncrementalDiff.FullRebuild
     }
 
     return IncrementalDiff.FullRebuild

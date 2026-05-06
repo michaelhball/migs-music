@@ -105,13 +105,34 @@ class IncrementalDiffTest {
     }
 
     @Test
-    fun multiStepMoveForcesFullRebuild() {
-        // Move spanning multiple positions where the rebuilt list doesn't equal newIds —
-        // documented limitation, audit item #15. Verified to safely fall back.
+    fun multiStepMoveBackwardReturnsMove() {
+        // a b c d e → d a b c e: d moved from index 3 to index 0. currentIndex=4 (e),
+        // not in the affected range, so the move applies cleanly.
         val diff = computeIncrementalDiff(listOf(a, b, c, d, e), listOf(d, a, b, c, e), currentIndex = 4)
-        // From index 0 (a) and index 3 (d) both differ; the algorithm tries to interpret
-        // it as a single move but the rebuilt list also doesn't match → full rebuild.
-        // (We don't care which fallback path it hits, just that we don't break the player.)
+        assertEquals(IncrementalDiff.Move(from = 3, to = 0), diff)
+    }
+
+    @Test
+    fun multiStepMoveForwardReturnsMove() {
+        // a b c d e → b c d a e: a moved from index 0 to index 3. currentIndex=4 (e),
+        // not in the affected range.
+        val diff = computeIncrementalDiff(listOf(a, b, c, d, e), listOf(b, c, d, a, e), currentIndex = 4)
+        assertEquals(IncrementalDiff.Move(from = 0, to = 3), diff)
+    }
+
+    @Test
+    fun multiStepMoveTouchingCurrentForcesFullRebuild() {
+        // Same multi-step move shape but currentIndex is inside the affected range —
+        // shifting the queue while the current track plays is a full-rebuild scenario.
+        val diff = computeIncrementalDiff(listOf(a, b, c, d, e), listOf(d, a, b, c, e), currentIndex = 1)
+        assertEquals(IncrementalDiff.FullRebuild, diff)
+    }
+
+    @Test
+    fun unrelatedDoubleSwapForcesFullRebuild() {
+        // Two unrelated swaps: a↔b at one end, d↔e at the other. Not interpretable as
+        // a single move; should fall back.
+        val diff = computeIncrementalDiff(listOf(a, b, c, d, e), listOf(b, a, c, e, d), currentIndex = 2)
         assertEquals(IncrementalDiff.FullRebuild, diff)
     }
 
