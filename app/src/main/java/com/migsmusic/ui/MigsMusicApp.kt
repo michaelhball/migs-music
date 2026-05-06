@@ -25,8 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -98,24 +100,26 @@ fun MigsMusicApp(
         }
     }
 
-    // Snapshot the persisted "was on player" flag at composition start, then check it once
-    // in a LaunchedEffect below. We read it via `remember` (not from inside the LaunchedEffect)
-    // to avoid a race where the route-tracking effect could overwrite the pref to `false`
-    // before our restore effect reads it on a cold start that lands directly on Songs.
+    // Snapshot the persisted "was on player" flag at composition start, then act on it once
+    // the NavController graph is ready (currentRoute becoming non-null is the signal). We
+    // read via `remember` so the route-tracking write below can't overwrite the pref before
+    // we observe it on a cold start that lands on Songs first.
     val shouldRestorePlayerRoute = remember { appContainer.preferences.wasOnPlayerRoute }
+    var didRestorePlayerRoute by remember { mutableStateOf(false) }
 
-    // Keep the pref in sync with the NavController's current route so the next cold start
-    // knows where to land.
+    // Single effect: gates on `currentRoute != null` (i.e. the NavHost has registered its
+    // graph), then both restores the player route once and keeps the pref in sync.
+    // Calling navController.navigate(...) before the graph is set throws — that's why we
+    // wait for currentRoute rather than firing on `Unit`.
     LaunchedEffect(currentRoute) {
-        if (currentRoute != null) {
-            appContainer.preferences.wasOnPlayerRoute = currentRoute == "player"
-        }
-    }
-    // One-shot restore on cold start: if the snapshot says we were on the player, jump back.
-    LaunchedEffect(Unit) {
-        if (shouldRestorePlayerRoute) {
+        if (currentRoute == null) return@LaunchedEffect
+        if (!didRestorePlayerRoute && shouldRestorePlayerRoute) {
+            didRestorePlayerRoute = true
             navController.navigate("player") { launchSingleTop = true }
+            return@LaunchedEffect
         }
+        didRestorePlayerRoute = true
+        appContainer.preferences.wasOnPlayerRoute = currentRoute == "player"
     }
 
     val onPlayerRoute = currentRoute == "player"
