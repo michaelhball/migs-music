@@ -14,13 +14,17 @@ class PlaylistRepository(
 
     fun observePlaylistSongs(playlistId: Long): Flow<List<PlaylistSong>> = playlistDao.observePlaylistSongs(playlistId)
 
-    suspend fun createPlaylist(name: String): Long {
+    suspend fun createPlaylist(
+        name: String,
+        syncedFromMac: Boolean = false,
+    ): Long {
         val now = System.currentTimeMillis()
         return playlistDao.insertPlaylist(
             PlaylistEntity(
                 name = name.trim(),
                 createdAtMillis = now,
                 updatedAtMillis = now,
+                syncedFromMac = syncedFromMac,
             ),
         )
     }
@@ -92,12 +96,17 @@ class PlaylistRepository(
      * Creates a fresh playlist with [name] and adds [songIds] in order. Used by the M3U
      * import flow. Returns the new playlist id. Each song gets `originalPosition` set to
      * its index in [songIds], which is the M3U import order.
+     *
+     * [syncedFromMac] marks the new playlist as belonging to the sync source (Mac app),
+     * so subsequent syncs can replace its contents and so manual playlists are protected
+     * from sync-driven mutations.
      */
     suspend fun createPlaylistWithSongs(
         name: String,
         songIds: List<Long>,
+        syncedFromMac: Boolean = false,
     ): Long {
-        val playlistId = createPlaylist(name)
+        val playlistId = createPlaylist(name, syncedFromMac)
         songIds.forEach { addSong(playlistId, it) }
         return playlistId
     }
