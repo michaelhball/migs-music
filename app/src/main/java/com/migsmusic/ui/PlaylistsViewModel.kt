@@ -274,9 +274,21 @@ class PlaylistsViewModel(
     }
 
     /**
-     * Scans the SAF tree at [treeUri] for `.m3u` / `.m3u8` files and updates
-     * [availableM3uFiles]. The Playlists screen calls this on entry. No-op when [treeUri]
-     * is null (user hasn't granted folder access yet) — clears the list to keep state honest.
+     * Scans the SAF tree at [treeUri] for `.m3u` / `.m3u8` files, *auto-imports each one*
+     * as a synced playlist (replacing same-name synced playlists if they exist), then
+     * deletes the file from disk. The remaining set — files we couldn't import (no
+     * matching songs, parse failure) — populates [availableM3uFiles] so the user can
+     * decide what to do via the manual UI.
+     *
+     * In normal sync use the user never sees the "Available to import" list because every
+     * file gets absorbed silently. The list is a fallback for unhappy cases.
+     *
+     * Sync semantics: an M3U named `Workout.m3u` always lands in the same synced playlist
+     * row, even if the user has manually reordered or renamed it on the phone — the
+     * auto-import will replace its contents. Manual playlists with the same name are not
+     * touched (they're a different DB row).
+     *
+     * No-op when [treeUri] is null (user hasn't granted folder access yet).
      */
     fun refreshAvailableM3uFiles(
         context: Context,
@@ -289,12 +301,67 @@ class PlaylistsViewModel(
         }
         viewModelScope.launch {
             val fresh = scanForM3uFiles(context, treeUri)
-            _availableM3uFiles.value = fresh
-            // Persist so the next cold start renders this list instantly without waiting
-            // for SAF to walk the tree again.
-            saveCachedM3uList(fresh)
+            // Snapshot the library once for the whole pass; the matcher pre-indexes from
+            // it so re-running per file would just rebuild the same maps.
+            val library = libraryRepository.observeAllSongs().first()
+
+            val unprocessed = mutableListOf<DiscoveredM3u>()
+            for (file in fresh) {
+                val outcome = autoImportSingleFile(context, file, library)
+                if (outcome != AutoImportOutcome.Imported) {
+                    unprocessed += file
+                }
+            }
+            _availableM3uFiles.value = unprocessed
+            saveCachedM3uList(unprocessed)
         }
     }
+
+    private enum class AutoImportOutcome { Imported, Skipped, Failed }
+
+    /**
+     * Reads, parses, matches and (on success) imports a single M3U as a synced playlist,
+     * then deletes the file from disk. Returns whether the import happened. Skips files
+     * with zero matches so the user can fix them via the manual flow rather than seeing
+     * empty playlists silently created.
+     */
+    private suspend fun autoImportSingleFile(
+        context: Context,
+        file: DiscoveredM3u,
+        library: List<com.migsmusic.data.local.entity.SongEntity>,
+    ): AutoImportOutcome =
+        runCatching {
+            val content =
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(file.uri)?.use { it.bufferedReader().readText() }
+                } ?: return@runCatching AutoImportOutcome.Failed
+            if (content.isBlank()) return@runCatching AutoImportOutcome.Skipped
+
+            val (matched, _) =
+                withContext(Dispatchers.Default) {
+                    val entries = parseM3u(content)
+                    val result = matchM3uEntries(entries, library)
+                    result.matched to result.unmatched
+                }
+            val songIds = matched.map { it.song.id }
+            if (songIds.isEmpty()) return@runCatching AutoImportOutcome.Skipped
+
+            val playlistName =
+                file.displayName.removeSuffix(".m3u").removeSuffix(".m3u8")
+            playlistRepository.upsertSyncedPlaylist(playlistName, songIds)
+
+            // Delete the source file so the Music folder stays clean — the playlist now
+            // lives in the DB. Best-effort; if delete fails we still consider the import
+            // successful, the file just lingers (we'll try again on the next scan).
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    androidx.documentfile.provider.DocumentFile
+                        .fromSingleUri(context, file.uri)
+                        ?.delete()
+                }
+            }
+            AutoImportOutcome.Imported
+        }.getOrElse { AutoImportOutcome.Failed }
 
     /**
      * Reads [uri] (a content URI, typically from [DiscoveredM3u.uri]), parses + matches it,

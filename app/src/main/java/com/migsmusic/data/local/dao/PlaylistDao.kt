@@ -54,6 +54,15 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists WHERE id = :playlistId LIMIT 1")
     suspend fun getPlaylist(playlistId: Long): PlaylistEntity?
 
+    /**
+     * Looks up a synced (Mac-mirrored) playlist by name. Used by the auto-import flow to
+     * decide whether an arriving M3U should *replace* an existing synced playlist's
+     * contents (returns non-null) or *create* a new one (returns null). Manual playlists
+     * with the same name are ignored on purpose — they're separate rows.
+     */
+    @Query("SELECT * FROM playlists WHERE name = :name AND syncedFromMac = 1 LIMIT 1")
+    suspend fun findSyncedPlaylistByName(name: String): PlaylistEntity?
+
     @Query("DELETE FROM playlists WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
 

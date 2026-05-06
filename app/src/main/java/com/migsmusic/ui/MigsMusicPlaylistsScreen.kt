@@ -94,11 +94,12 @@ internal fun PlaylistsRoute(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
             // SAF grants are per-launch by default. takePersistableUriPermission keeps the
-            // grant across process restarts so we don't have to ask again.
+            // grant across process restarts. We need WRITE in addition to READ so the
+            // auto-import flow can delete .m3u files after successfully importing them.
             runCatching {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
             }
             playlistsViewModel.setMusicFolderUri(uri)
@@ -106,7 +107,20 @@ internal fun PlaylistsRoute(
 
     // Re-scan whenever the granted folder changes (initial load, fresh grant) and on every
     // entry to the Playlists tab. The ViewModel will no-op if the URI is null.
+    //
+    // Also re-asserts READ + WRITE persistence on the existing URI so users who granted
+    // READ-only access in an earlier app version get upgraded silently — auto-import
+    // needs write to delete consumed .m3u files. takePersistableUriPermission is
+    // idempotent and overwrites prior flag sets.
     LaunchedEffect(musicFolderUri) {
+        musicFolderUri?.let { uri ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+        }
         playlistsViewModel.refreshAvailableM3uFiles(context, musicFolderUri)
     }
 

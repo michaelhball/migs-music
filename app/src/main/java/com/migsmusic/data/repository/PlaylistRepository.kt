@@ -120,6 +120,33 @@ class PlaylistRepository(
         playlistDao.restoreOriginalOrder(playlistId)
     }
 
+    /**
+     * Sync upsert: if a synced (Mac-mirrored) playlist named [name] already exists, replace
+     * its contents with [songIds] (preserving the playlist row itself so any UI state
+     * keyed on its id stays valid). Otherwise, create a new synced playlist.
+     *
+     * Manual playlists with the same name are NOT matched — they're separate rows the user
+     * created on the phone, untouched by sync.
+     *
+     * Returns the playlist id (whether existing or newly created).
+     */
+    suspend fun upsertSyncedPlaylist(
+        name: String,
+        songIds: List<Long>,
+    ): Long {
+        val trimmed = name.trim()
+        val existing = playlistDao.findSyncedPlaylistByName(trimmed)
+        if (existing != null) {
+            playlistDao.clearPlaylistSongs(existing.id)
+            songIds.forEach { addSong(existing.id, it) }
+            playlistDao.updatePlaylist(
+                existing.copy(updatedAtMillis = System.currentTimeMillis()),
+            )
+            return existing.id
+        }
+        return createPlaylistWithSongs(trimmed, songIds, syncedFromMac = true)
+    }
+
     suspend fun hasOriginalOrder(playlistId: Long): Boolean = playlistDao.hasOriginalOrder(playlistId)
 
     private suspend fun normalizePlaylistPositions(playlistId: Long) {
