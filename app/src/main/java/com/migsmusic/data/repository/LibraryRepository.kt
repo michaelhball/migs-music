@@ -206,7 +206,14 @@ class LibraryRepository(
             // Chunk the upsert so a 50k-song library doesn't pin a single all-or-nothing transaction
             // (and a single huge SQLite statement) — the small per-chunk overhead is well worth it.
             songs.chunked(UPSERT_CHUNK_SIZE).forEach { chunk -> songDao.upsertAll(chunk) }
-            pruneMissingSongs(currentSongIds = songs.map { it.id }.toSet())
+            // pruneMissingSongs() is intentionally NOT called here. It used to delete any song
+            // whose MediaStore _ID didn't appear in the latest scan, but MediaScanner can
+            // briefly drop a file's IS_MUSIC flag while re-reading its tags — making the file
+            // transiently invisible to our `IS_MUSIC != 0` query. The CASCADE on
+            // playlist_songs.songId would then wipe the playlist's contents. Skipping prune
+            // means stale rows for genuinely-deleted files linger in the songs table, which is
+            // a much smaller bug than losing playlists. Proper fix is to use a stable identifier
+            // (file path / contentUri) instead of MediaStore _ID as the song PK.
             songs.size
         }
 
