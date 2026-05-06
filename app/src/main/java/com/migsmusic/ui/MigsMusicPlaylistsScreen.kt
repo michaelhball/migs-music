@@ -28,6 +28,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -486,14 +488,17 @@ internal fun PlaylistDetailRoute(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Back arrow + playlist name in a header row. Pops the back stack so the user can
-        // return to the playlists list.
+        // Single compact header row: back, playlist name, action icons (play, shuffle,
+        // rename, restore-order, sort), overflow menu. Replaces the previous three-row
+        // layout (back + name, then full-text Buttons, then count) which ate ~30% of the
+        // screen height before the song list got a single pixel.
         val playlistName = playlists.firstOrNull { it.id == playlistId }?.name.orEmpty()
+        var headerOverflowOpen by remember { mutableStateOf(false) }
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                    .padding(horizontal = 4.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             IconButton(
@@ -505,51 +510,24 @@ internal fun PlaylistDetailRoute(
             Text(
                 text = playlistName,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 8.dp),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(end = 8.dp),
             )
-        }
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            Button(
-                onClick = { renameDialogVisible = true },
-                modifier = Modifier.testTag(UiTestTags.PlaylistDetailRename),
-            ) {
-                Text("Rename")
-            }
-            Button(
+            IconButton(
                 onClick = { playlistsViewModel.playPlaylist(songs, 0, shuffle = false) },
                 enabled = songs.isNotEmpty(),
                 modifier = Modifier.testTag(UiTestTags.PlaylistDetailPlay),
             ) {
-                Text("Play Playlist")
+                Icon(Icons.Default.PlayArrow, contentDescription = "Play playlist")
             }
-            Button(
+            IconButton(
                 onClick = { playlistsViewModel.playPlaylist(songs, 0, shuffle = true) },
                 enabled = songs.isNotEmpty(),
                 modifier = Modifier.testTag(UiTestTags.PlaylistDetailShuffle),
             ) {
-                Text("Shuffle Playlist")
+                Icon(Icons.Default.Shuffle, contentDescription = "Shuffle playlist")
             }
-            // Available whenever the playlist has at least one song with a known import-time
-            // position (which is everything created on v3+ and any pre-existing playlists
-            // whose rows were backfilled by the v2→v3 migration).
-            TextButton(
-                onClick = {
-                    playlistsViewModel.restoreOriginalOrder(playlistId)
-                    snackbar.show("Restored to import order")
-                },
-                enabled = songs.isNotEmpty(),
-                modifier = Modifier.testTag(UiTestTags.PlaylistDetailRestoreOrder),
-            ) {
-                Text("Restore order")
-            }
-            Spacer(Modifier.weight(1f))
             SortMenu(
                 current = contentSort,
                 options = PlaylistContentSortOrder.entries,
@@ -557,12 +535,40 @@ internal fun PlaylistDetailRoute(
                 nameOf = { it.name },
                 onSelect = { contentSort = it },
             )
+            Box {
+                IconButton(onClick = { headerOverflowOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More")
+                }
+                DropdownMenu(
+                    expanded = headerOverflowOpen,
+                    onDismissRequest = { headerOverflowOpen = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = {
+                            headerOverflowOpen = false
+                            renameDialogVisible = true
+                        },
+                        modifier = Modifier.testTag(UiTestTags.PlaylistDetailRename),
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Restore import order") },
+                        enabled = songs.isNotEmpty(),
+                        onClick = {
+                            headerOverflowOpen = false
+                            playlistsViewModel.restoreOriginalOrder(playlistId)
+                            snackbar.show("Restored to import order")
+                        },
+                        modifier = Modifier.testTag(UiTestTags.PlaylistDetailRestoreOrder),
+                    )
+                }
+            }
         }
         if (songs.isNotEmpty()) {
             Text(
                 text = formatCountAndDuration(songs.size, songs.sumOf { it.durationMs }),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(start = 56.dp, end = 16.dp, bottom = 4.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
