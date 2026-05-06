@@ -54,6 +54,9 @@ class PlaylistRepository(
     suspend fun getOrphanSongIds(removedPlaylistIds: List<Long>): List<Long> =
         if (removedPlaylistIds.isEmpty()) emptyList() else playlistDao.getOrphanSongIds(removedPlaylistIds)
 
+    /** True if [songId] is not referenced by any playlist (synced or manual). */
+    suspend fun songIsUnreferenced(songId: Long): Boolean = playlistDao.songIsUnreferenced(songId)
+
     suspend fun addSong(
         playlistId: Long,
         songId: Long,

@@ -95,6 +95,10 @@ interface PlaylistDao {
         newId: Long,
     )
 
+    /** True if [songId] is not referenced by any playlist_songs row. */
+    @Query("SELECT NOT EXISTS(SELECT 1 FROM playlist_songs WHERE songId = :songId)")
+    suspend fun songIsUnreferenced(songId: Long): Boolean
+
     @Query("DELETE FROM playlists WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
 
