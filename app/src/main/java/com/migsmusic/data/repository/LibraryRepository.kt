@@ -6,6 +6,8 @@ import android.media.MediaScannerConnection
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
+import com.migsmusic.data.local.dao.PlaybackSnapshotDao
+import com.migsmusic.data.local.dao.PlaylistDao
 import com.migsmusic.data.local.dao.SongDao
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.local.model.AlbumSummary
@@ -21,6 +23,8 @@ import java.io.File
 class LibraryRepository(
     private val context: Context,
     private val songDao: SongDao,
+    private val playlistDao: PlaylistDao,
+    private val playbackSnapshotDao: PlaybackSnapshotDao,
 ) {
     fun observeAllSongs(): Flow<List<SongEntity>> = songDao.observeAllSongs()
 
@@ -233,6 +237,7 @@ class LibraryRepository(
                             albumArtUri = albumArtUri,
                             dateAddedSeconds = cursor.getLong(dateAddedIndex),
                             dateModifiedSeconds = cursor.getLong(dateModifiedIndex),
+                            absolutePath = absolutePath,
                         )
                 }
             }
@@ -257,20 +262,51 @@ class LibraryRepository(
                 return@withContext 0
             }
 
+            // Detect MediaStore _ID reassignments BEFORE we touch songs, so we can keep
+            // playlists pointed at the right tracks. MediaScanner sometimes reassigns _ID
+            // for the same on-disk file when it re-reads tags; previously the new _ID
+            // landed in songs as a "new" row while playlist_songs still pointed at the old
+            // _ID — the song silently dropped out of every playlist that referenced it.
+            //
+            // Now: build the (newId-keyed) view of what the scan saw, intersect against
+            // the (oldId-keyed) view of what's already in songs by absolutePath, and remap
+            // playlist_songs.songId from old to new for any path whose id changed.
+            val previousByPath: Map<String, Long> =
+                songDao.getIdAndPaths().associate { it.absolutePath to it.id }
+            val newPathToId: Map<String, Long> =
+                songs.asSequence()
+                    .filter { it.absolutePath.isNotEmpty() }
+                    .associate { it.absolutePath to it.id }
+            val remapped = mutableListOf<Pair<Long, Long>>()
+            for ((path, newId) in newPathToId) {
+                val oldId = previousByPath[path] ?: continue
+                if (oldId != newId) remapped += oldId to newId
+            }
+            if (remapped.isNotEmpty()) {
+                Log.i(TAG, "scanDevice: remapping ${remapped.size} song id(s) due to MediaStore _ID reassignment")
+                for ((oldId, newId) in remapped) {
+                    playlistDao.remapSongId(oldId = oldId, newId = newId)
+                }
+                // The playback snapshot stores comma-separated ids; remapping its serialized
+                // strings is fragile, so just drop the persisted snapshot when any remap
+                // occurs. The in-memory queue is unaffected; the user just loses the saved
+                // position on the next cold start. Rare event; acceptable.
+                playbackSnapshotDao.clearSnapshot()
+            }
+
             // Chunk the upsert so a 50k-song library doesn't pin a single all-or-nothing
             // transaction (and a single huge SQLite statement). [SongDao.upsertAllChunked]
             // wraps the per-chunk loop in ONE Room transaction so we still get a single
             // commit + fsync at the end — without it each chunk was its own implicit
             // transaction, multiplying disk traffic ~5-10× on cold-start scans.
             songDao.upsertAllChunked(songs.chunked(UPSERT_CHUNK_SIZE))
-            // pruneMissingSongs() is intentionally NOT called here. It used to delete any song
-            // whose MediaStore _ID didn't appear in the latest scan, but MediaScanner can
-            // briefly drop a file's IS_MUSIC flag while re-reading its tags — making the file
-            // transiently invisible to our `IS_MUSIC != 0` query. The CASCADE on
-            // playlist_songs.songId would then wipe the playlist's contents. Skipping prune
-            // means stale rows for genuinely-deleted files linger in the songs table, which is
-            // a much smaller bug than losing playlists. Proper fix is to use a stable identifier
-            // (file path / contentUri) instead of MediaStore _ID as the song PK.
+
+            // Now that remapping has moved any orphaned references to the new ids, prune
+            // genuinely-missing songs. This deletes rows whose absolute file no longer
+            // appears in MediaStore — i.e. real deletions, not transient _ID churn.
+            // CASCADE on playlist_songs.songId is now safe: the references for songs whose
+            // _ID was reassigned have been updated to the new id above, so they survive.
+            pruneMissingSongs(songs.map { it.id }.toSet())
             songs.size
         }
 

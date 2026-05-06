@@ -168,4 +168,19 @@ interface SongDao {
 
     @Query("DELETE FROM songs WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
+
+    /**
+     * (id, absolutePath) for every song. Used by [com.migsmusic.data.repository.LibraryRepository.scanDevice]
+     * to detect MediaStore _ID reassignments — a row whose absolutePath matches what the
+     * scan just saw but with a different id is the same file with a new _ID, and the scan
+     * remaps `playlist_songs.songId` before cleaning up the old row.
+     */
+    @Query("SELECT id, absolutePath FROM songs WHERE absolutePath != ''")
+    suspend fun getIdAndPaths(): List<SongIdPath>
 }
+
+/** Projection for [SongDao.getIdAndPaths]. */
+data class SongIdPath(
+    val id: Long,
+    val absolutePath: String,
+)

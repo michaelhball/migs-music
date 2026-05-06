@@ -83,6 +83,18 @@ interface PlaylistDao {
     )
     suspend fun getOrphanSongIds(removedPlaylistIds: List<Long>): List<Long>
 
+    /**
+     * Remap a `playlist_songs.songId` reference from [oldId] to [newId]. Used by the
+     * library scan when MediaStore reassigns a song's _ID for the same on-disk file —
+     * playlists keep their membership instead of orphaning. No-op if no rows reference
+     * [oldId].
+     */
+    @Query("UPDATE playlist_songs SET songId = :newId WHERE songId = :oldId")
+    suspend fun remapSongId(
+        oldId: Long,
+        newId: Long,
+    )
+
     @Query("DELETE FROM playlists WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
 

@@ -19,7 +19,7 @@ import com.migsmusic.data.local.entity.SongEntity
         PlaylistSongEntity::class,
         PlaybackSnapshotEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -54,5 +54,19 @@ val MIGRATION_3_4 =
     object : Migration(3, 4) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE playlists ADD COLUMN syncedFromMac INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+/**
+ * v5 adds `songs.absolutePath` so the next scan can use it as the stable identity of each
+ * track across MediaStore _ID reassignment. Existing rows get an empty string; the next
+ * `scanDevice()` pass populates it. Until then the remap logic in scanDevice can't help —
+ * but the `@Upsert` change earlier in the migration sequence already prevents the worst
+ * failure mode (CASCADE-wiping `playlist_songs` on every scan).
+ */
+val MIGRATION_4_5 =
+    object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE songs ADD COLUMN absolutePath TEXT NOT NULL DEFAULT ''")
         }
     }

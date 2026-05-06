@@ -20,6 +20,10 @@ private class FakePlaybackSnapshotDao : PlaybackSnapshotDao {
     override suspend fun upsertSnapshot(snapshot: PlaybackSnapshotEntity) {
         stored = snapshot
     }
+
+    override suspend fun clearSnapshot() {
+        stored = null
+    }
 }
 
 class PlaybackSessionRepositoryTest {

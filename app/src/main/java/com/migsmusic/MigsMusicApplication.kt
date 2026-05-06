@@ -14,6 +14,7 @@ import com.migsmusic.data.LibrarySyncObserver
 import com.migsmusic.data.local.AppDatabase
 import com.migsmusic.data.local.MIGRATION_2_3
 import com.migsmusic.data.local.MIGRATION_3_4
+import com.migsmusic.data.local.MIGRATION_4_5
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaybackSessionRepository
 import com.migsmusic.data.repository.PlaylistRepository
@@ -33,7 +34,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
                 AppDatabase::class.java,
                 "migs-music.db",
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration(dropAllTables = false)
                 // WAL lets scanDevice writes overlap with UI reads (e.g. observeAllSongs Flow
                 // firing while ContentObserver-driven upserts run). Default TRUNCATE journal
@@ -45,6 +46,8 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
             LibraryRepository(
                 context = applicationContext,
                 songDao = database.songDao(),
+                playlistDao = database.playlistDao(),
+                playbackSnapshotDao = database.playbackSnapshotDao(),
             )
         val playlistRepository =
             PlaylistRepository(
