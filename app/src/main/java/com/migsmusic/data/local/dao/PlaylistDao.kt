@@ -66,6 +66,23 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists WHERE syncedFromMac = 1")
     suspend fun getSyncedPlaylists(): List<PlaylistEntity>
 
+    /**
+     * Songs whose ONLY playlist references are in [removedPlaylistIds]. Used by the audio-
+     * cleanup path of the sync prune flow: when a playlist is removed, any song that wasn't
+     * also reachable via another (manual or synced) playlist is a candidate for file deletion.
+     * Returns an empty list if the input is empty.
+     */
+    @Query(
+        """
+        SELECT DISTINCT songId FROM playlist_songs
+        WHERE playlistId IN (:removedPlaylistIds)
+        AND songId NOT IN (
+            SELECT songId FROM playlist_songs WHERE playlistId NOT IN (:removedPlaylistIds)
+        )
+        """,
+    )
+    suspend fun getOrphanSongIds(removedPlaylistIds: List<Long>): List<Long>
+
     @Query("DELETE FROM playlists WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
 

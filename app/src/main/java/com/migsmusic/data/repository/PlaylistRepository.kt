@@ -51,6 +51,9 @@ class PlaylistRepository(
 
     suspend fun getSyncedPlaylists(): List<PlaylistEntity> = playlistDao.getSyncedPlaylists()
 
+    suspend fun getOrphanSongIds(removedPlaylistIds: List<Long>): List<Long> =
+        if (removedPlaylistIds.isEmpty()) emptyList() else playlistDao.getOrphanSongIds(removedPlaylistIds)
+
     suspend fun addSong(
         playlistId: Long,
         songId: Long,

@@ -66,7 +66,12 @@ class AutoImportService(
     /**
      * Reads the optional sync manifest at `<treeUri>/.migs-sync-manifest`, deletes any
      * synced playlists not listed in it, then deletes the manifest. No-op if the file
-     * isn't there. The manifest is one playlist name per line, UTF-8.
+     * isn't there.
+     *
+     * Manifest format: UTF-8, one playlist name per line. An optional first line of the
+     * form `#opts:key=value,key=value` carries options:
+     *   - `deleteOrphans=true` — also delete the audio files of removed playlists when no
+     *     other playlist (manual or synced) still references them.
      *
      * If the currently-playing song belongs to a pruned playlist, playback is stopped to
      * avoid leaving an orphan track in the mini-player (same behavior as the user-facing
@@ -86,17 +91,37 @@ class AutoImportService(
                 }.getOrNull()
             } ?: return // No manifest pushed this round; nothing to prune.
 
-        val keepNames =
-            manifestText
-                .lineSequence()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .toSet()
+        var deleteOrphans = false
+        val keepNames = mutableSetOf<String>()
+        for (line in manifestText.lineSequence()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) continue
+            if (trimmed.startsWith("#opts:")) {
+                trimmed.removePrefix("#opts:")
+                    .split(",")
+                    .forEach { opt ->
+                        val (k, v) = opt.split("=", limit = 2).let { it.getOrNull(0) to it.getOrNull(1) }
+                        if (k?.trim() == "deleteOrphans") deleteOrphans = v?.trim() == "true"
+                    }
+                continue
+            }
+            keepNames += trimmed
+        }
 
         val syncedPlaylists = playlistRepository.getSyncedPlaylists()
         val toRemove = syncedPlaylists.filter { it.name !in keepNames }
         if (toRemove.isNotEmpty()) {
             Log.i(TAG, "pruning ${toRemove.size} synced playlist(s) not in manifest: ${toRemove.map { it.name }}")
+
+            // Compute orphan song ids BEFORE deleting playlists, otherwise the rows we'd be
+            // diffing against are already gone.
+            val orphanSongIds =
+                if (deleteOrphans) {
+                    playlistRepository.getOrphanSongIds(toRemove.map { it.id })
+                } else {
+                    emptyList()
+                }
+
             val currentSongId = playbackManager.currentSongId.value
             for (playlist in toRemove) {
                 if (currentSongId != null) {
@@ -106,6 +131,10 @@ class AutoImportService(
                     }
                 }
                 playlistRepository.deletePlaylist(playlist.id)
+            }
+
+            if (orphanSongIds.isNotEmpty()) {
+                deleteOrphanAudioFiles(treeUri, orphanSongIds)
             }
         }
 
@@ -118,6 +147,58 @@ class AutoImportService(
                     .getOrDefault(false)
             }
         if (!deleted) Log.w(TAG, "manifest delete failed at $docUri")
+    }
+
+    /**
+     * For each orphaned song id, look up the absolute file path via MediaStore, build the
+     * SAF doc URI under [treeUri] (which the user granted at /sdcard/Music), and delete the
+     * underlying file. Then drop the SongEntity rows from Room so the library doesn't show
+     * ghost entries that won't play.
+     *
+     * Best-effort per file: a delete failure for one orphan doesn't stop the others.
+     * Songs whose files live outside the granted tree (e.g. RELATIVE_PATH "Movies/..." for
+     * some weird MTP transfer) are skipped — we have no permission there.
+     */
+    private suspend fun deleteOrphanAudioFiles(
+        treeUri: Uri,
+        songIds: List<Long>,
+    ) {
+        val paths = libraryRepository.getSongAbsolutePaths(songIds)
+        if (paths.isEmpty()) return
+        Log.i(TAG, "audio-cleanup: ${paths.size} orphan file(s) to delete")
+        val deletedSongIds = mutableListOf<Long>()
+        for ((songId, absolutePath) in paths) {
+            val docUri = absolutePathToTreeDocUri(treeUri, absolutePath) ?: continue
+            val deleted =
+                withContext(Dispatchers.IO) {
+                    runCatching { DocumentFile.fromSingleUri(context, docUri)?.delete() ?: false }
+                        .getOrDefault(false)
+                }
+            if (deleted) {
+                deletedSongIds += songId
+            } else {
+                Log.w(TAG, "audio-cleanup: failed to delete $absolutePath")
+            }
+        }
+        if (deletedSongIds.isNotEmpty()) {
+            libraryRepository.deleteSongs(deletedSongIds)
+        }
+    }
+
+    /**
+     * Maps an absolute filesystem path under `/storage/emulated/0/<sub>` to a SAF document
+     * URI for [treeUri] (which is the granted Music tree, doc id `primary:Music`). Returns
+     * null if the path is outside the tree — we can't delete it via this grant.
+     */
+    private fun absolutePathToTreeDocUri(
+        treeUri: Uri,
+        absolutePath: String,
+    ): Uri? {
+        val musicRoot = "/storage/emulated/0/Music/"
+        val rel = absolutePath.removePrefix(musicRoot)
+        if (rel == absolutePath) return null // path didn't start with /storage/emulated/0/Music/
+        val docId = "primary:Music/$rel"
+        return DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
     }
 
     /**

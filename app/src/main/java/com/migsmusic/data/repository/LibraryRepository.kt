@@ -36,7 +36,46 @@ class LibraryRepository(
         return ids.mapNotNull(indexed::get)
     }
 
+    /**
+     * Resolves the absolute filesystem paths of the given MediaStore song ids by querying
+     * `MediaStore.Audio.Media.DATA`. We don't persist DATA in [SongEntity] (it's deprecated
+     * for general use on Q+), but it's still readable and we need the absolute path to
+     * delete the underlying file via SAF for the audio-cleanup flow.
+     */
+    suspend fun getSongAbsolutePaths(ids: List<Long>): Map<Long, String> =
+        withContext(Dispatchers.IO) {
+            if (ids.isEmpty()) return@withContext emptyMap()
+            val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            val projection =
+                arrayOf(
+                    MediaStore.Audio.Media._ID,
+                    MediaStore.Audio.Media.DATA,
+                )
+            val selection = "${MediaStore.Audio.Media._ID} IN (${ids.joinToString(",")})"
+            val out = mutableMapOf<Long, String>()
+            context.contentResolver.query(collection, projection, selection, null, null)?.use { c ->
+                val idIdx = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                val pathIdx = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                while (c.moveToNext()) {
+                    val id = c.getLong(idIdx)
+                    val path = c.getString(pathIdx)?.takeIf { it.isNotBlank() } ?: continue
+                    out[id] = path
+                }
+            }
+            out
+        }
+
     suspend fun isEmpty(): Boolean = songDao.getAllSongIds().isEmpty()
+
+    /**
+     * Removes [ids] from the songs table. Used by the audio-cleanup path of the sync prune
+     * flow after the underlying files have been deleted via SAF — keeps Room from holding
+     * stale entries that point at files that no longer exist.
+     */
+    suspend fun deleteSongs(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        ids.chunked(500).forEach { songDao.deleteByIds(it) }
+    }
 
     /**
      * Returns the immediate child folders directly under [parentPath], plus their cumulative
