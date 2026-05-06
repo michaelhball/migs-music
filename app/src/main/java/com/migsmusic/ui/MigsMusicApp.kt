@@ -159,13 +159,13 @@ fun MigsMusicApp(
                         NavigationBar {
                             listOf(
                                 TopLevelDestination("songs", "Songs", Icons.Default.MusicNote, UiTestTags.SongsTab),
-                                TopLevelDestination("folders", "Folders", Icons.Default.Folder, UiTestTags.FoldersTab),
                                 TopLevelDestination(
                                     "playlists",
                                     "Playlists",
                                     Icons.AutoMirrored.Filled.PlaylistPlay,
                                     UiTestTags.PlaylistsTab,
                                 ),
+                                TopLevelDestination("folders", "Folders", Icons.Default.Folder, UiTestTags.FoldersTab),
                                 TopLevelDestination(
                                     "queue",
                                     "Queue",
@@ -349,6 +349,7 @@ fun MigsMusicApp(
                         playlistId = playlistId,
                         playlistsViewModel = playlistsViewModel,
                         currentSongId = playbackState.currentSong?.songId,
+                        onGoBack = { navController.popBackStack() },
                     )
                 }
                 composable("queue") {

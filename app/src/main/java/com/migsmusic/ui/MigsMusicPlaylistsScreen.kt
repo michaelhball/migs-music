@@ -4,7 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
@@ -452,6 +455,7 @@ internal fun PlaylistDetailRoute(
     playlistId: Long,
     playlistsViewModel: PlaylistsViewModel,
     currentSongId: Long?,
+    onGoBack: () -> Unit,
 ) {
     // playlistSongs() creates a new StateFlow each call; remember by id so we don't
     // spin a recomposition loop (the new flow re-emits emptyList -> recompose -> new flow ...).
@@ -491,6 +495,28 @@ internal fun PlaylistDetailRoute(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // Back arrow + playlist name in a header row. Pops the back stack so the user can
+        // return to the playlists list.
+        val playlistName = playlists.firstOrNull { it.id == playlistId }?.name.orEmpty()
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onGoBack,
+                modifier = Modifier.testTag(UiTestTags.PlaylistDetailBack),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to playlists")
+            }
+            Text(
+                text = playlistName,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+        }
         Row(
             modifier =
                 Modifier
@@ -584,14 +610,6 @@ internal fun PlaylistDetailRoute(
                             snackbar.show("Added to queue")
                         }
                     }
-                val onMoveUp =
-                    remember(index, playlistId) {
-                        { playlistsViewModel.moveSong(playlistId, index, index - 1) }
-                    }
-                val onMoveDown =
-                    remember(index, playlistId) {
-                        { playlistsViewModel.moveSong(playlistId, index, index + 1) }
-                    }
                 ReorderableItem(playlistReorderState, key = song.playlistItemId) { _ ->
                     PlaylistSongRow(
                         song = song,
@@ -600,12 +618,8 @@ internal fun PlaylistDetailRoute(
                         onRemove = onRemove,
                         onPlayNext = onNext,
                         onPlayLater = onLater,
-                        onMoveUp = onMoveUp,
-                        onMoveDown = onMoveDown,
-                        // Reorder controls only appear in default order — sorting by another
-                        // criterion would make manual reorder visually confusing.
-                        canMoveUp = canReorder && index > 0,
-                        canMoveDown = canReorder && index < songs.lastIndex,
+                        // Drag handle only appears in default order — dragging while sorted
+                        // by something else would mutate position invisibly under a sorted view.
                         dragHandleModifier = if (canReorder) Modifier.draggableHandle() else null,
                     )
                 }
@@ -615,6 +629,7 @@ internal fun PlaylistDetailRoute(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PlaylistSongRow(
     song: PlaylistSong,
@@ -623,66 +638,84 @@ internal fun PlaylistSongRow(
     onRemove: () -> Unit,
     onPlayNext: () -> Unit,
     onPlayLater: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     dragHandleModifier: Modifier? = null,
 ) {
-    ListRow(
-        title = song.title,
-        subtitle = "${song.artist} • ${song.album}",
-        modifier =
-            Modifier
-                .testTag(UiTestTags.PlaylistSongRow)
-                .clickable(onClick = onPlay),
-        containerColor =
-            if (isCurrent) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surface
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        ListRow(
+            title = song.title,
+            subtitle = "${song.artist} • ${song.album}",
+            modifier =
+                Modifier
+                    .testTag(UiTestTags.PlaylistSongRow)
+                    .combinedClickable(
+                        onClick = onPlay,
+                        onLongClick = { menuOpen = true },
+                    ),
+            containerColor =
+                if (isCurrent) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+            titleFontWeight = if (isCurrent) FontWeight.Bold else null,
+            leading = {
+                AlbumArtImage(
+                    uri = song.albumArtUri,
+                    modifier =
+                        Modifier
+                            .size(40.dp)
+                            .clip(MaterialTheme.shapes.small),
+                )
             },
-        titleFontWeight = if (isCurrent) FontWeight.Bold else null,
-        leading = {
-            AlbumArtImage(
-                uri = song.albumArtUri,
-                modifier =
-                    Modifier
-                        .size(40.dp)
-                        .clip(MaterialTheme.shapes.small),
+            // Trailing area is intentionally minimal so the title + subtitle have room to
+            // breathe. Drag handle when reorder is allowed, then a single ⋮ overflow that
+            // hosts every action — matches the SongRow pattern elsewhere in the app.
+            actions = {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    if (dragHandleModifier != null) {
+                        Icon(
+                            Icons.Default.DragHandle,
+                            contentDescription = "Drag to reorder",
+                            modifier = dragHandleModifier.padding(8.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = { menuOpen = true },
+                        modifier = Modifier.testTag(UiTestTags.PlaylistSongRowMenu),
+                    ) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    }
+                }
+            },
+        )
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Play next") },
+                onClick = {
+                    menuOpen = false
+                    onPlayNext()
+                },
             )
-        },
-        actions = {
-            Row {
-                SmallActionButton(
-                    label = "Up",
-                    modifier = Modifier.testTag(UiTestTags.PlaylistSongMoveUp),
-                    onClick = onMoveUp,
-                    enabled = canMoveUp,
-                )
-                SmallActionButton(
-                    label = "Down",
-                    modifier = Modifier.testTag(UiTestTags.PlaylistSongMoveDown),
-                    onClick = onMoveDown,
-                    enabled = canMoveDown,
-                )
-                SmallActionButton(label = "Next", onClick = onPlayNext)
-                SmallActionButton(label = "Later", onClick = onPlayLater)
-                IconButton(
-                    onClick = onRemove,
-                    modifier = Modifier.testTag(UiTestTags.PlaylistSongRemove),
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = "Remove song")
-                }
-                if (dragHandleModifier != null) {
-                    Icon(
-                        Icons.Default.DragHandle,
-                        contentDescription = "Drag to reorder",
-                        modifier = dragHandleModifier.padding(8.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-    )
+            DropdownMenuItem(
+                text = { Text("Play later") },
+                onClick = {
+                    menuOpen = false
+                    onPlayLater()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Remove from playlist") },
+                onClick = {
+                    menuOpen = false
+                    onRemove()
+                },
+                modifier = Modifier.testTag(UiTestTags.PlaylistSongRemove),
+            )
+        }
+    }
 }

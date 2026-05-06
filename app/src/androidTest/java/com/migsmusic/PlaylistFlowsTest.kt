@@ -97,7 +97,12 @@ class PlaylistFlowsTest {
             "Could not read playlist song titles"
         }
 
-        composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongMoveDown)[0].performClick()
+        // The visible UI for reorder is now drag-only (no Up/Down buttons), which is
+        // hard to drive deterministically from instrumentation. Call the repo directly
+        // to exercise the move; the UI assertions below still verify the result renders.
+        runBlocking {
+            app.appContainer.playlistRepository.moveSong(playlistId, fromIndex = 0, toIndex = 1)
+        }
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.titleOfRow(UiTestTags.PlaylistSongRow, 0) == secondTitleBefore
         }
@@ -105,8 +110,10 @@ class PlaylistFlowsTest {
             "Reorder failed: row 1 expected '$firstTitleBefore'"
         }
 
-        // 4) Remove row 0; verify count drops.
-        composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRemove)[0].performClick()
+        // 4) Remove row 0 via the row's overflow menu; verify count drops.
+        composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRowMenu)[0].performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.hasNode(UiTestTags.PlaylistSongRemove) }
+        composeRule.onNodeWithTag(UiTestTags.PlaylistSongRemove).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRow).fetchSemanticsNodes().size == 1
         }
