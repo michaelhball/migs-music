@@ -32,6 +32,13 @@ class AutoImportService(
         val files = scanForM3uFiles(context, treeUri)
         if (files.isEmpty()) return emptyList()
         Log.i(TAG, "importAllInTree: ${files.size} m3u file(s) found")
+        // Force a fresh MediaStore → Room scan before reading the library snapshot. The Mac
+        // sync flow pushes audio files via adb and broadcasts AUTO_IMPORT immediately after,
+        // so without this step `observeAllSongs().first()` may return a stale view that's
+        // missing the just-pushed tracks (LibrarySyncObserver's debounced auto-rescan hasn't
+        // fired yet, and the deprecated MEDIA_SCANNER_SCAN_FILE broadcast no-ops on Android 11+).
+        runCatching { libraryRepository.scanDevice() }
+            .onFailure { Log.w(TAG, "pre-import scanDevice failed", it) }
         // Snapshot the library once — the matcher pre-indexes from it, so re-running per
         // file would just rebuild the same maps.
         val library = libraryRepository.observeAllSongs().first()
