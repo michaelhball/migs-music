@@ -8,8 +8,9 @@ import java.io.File
 
 /**
  * One M3U file found under the app's sync directory. [absolutePath] is what we read +
- * delete via direct `java.io.File`; [uri] is a `file://` URI we keep around for the
- * legacy SAF call sites that still want a Uri shape.
+ * delete via direct `java.io.File`. [uri] is a `file://` URI for the (rare) call sites
+ * that still want a Uri shape (e.g. the manual-import dialog flow which builds on
+ * `ContentResolver.openInputStream`).
  */
 data class DiscoveredM3u(
     val uri: Uri,

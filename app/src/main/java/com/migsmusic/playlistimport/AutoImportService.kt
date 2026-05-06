@@ -12,7 +12,7 @@ import java.io.File
 /**
  * Aggregate result of an auto-import batch. [unprocessed] is everything that didn't get
  * absorbed into a synced playlist — UI surfaces it as "available to import" cards.
- * [failures] is the strict subset that errored (parse / IO / SAF) rather than just having
+ * [failures] is the strict subset that errored (parse / IO error) rather than just having
  * no matches; UI can show a snackbar for those because they indicate a real problem.
  */
 data class ImportSummary(
@@ -31,9 +31,9 @@ internal sealed interface SingleFileOutcome {
 }
 
 /**
- * Walks a granted SAF tree, auto-imports every `.m3u` / `.m3u8` file it finds as a synced
- * playlist (replacing same-name synced playlists; never touching manual ones), and deletes
- * each consumed file from disk.
+ * Walks the app sync directory ([SYNC_DIR_PATH]), auto-imports every `.m3u` / `.m3u8` file
+ * it finds as a synced playlist (replacing same-name synced playlists; never touching
+ * manual ones), and deletes each consumed file from disk.
  *
  * Lives at the Application scope (on [com.migsmusic.AppContainer]) so it can be invoked
  * from anywhere — the Playlists ViewModel during normal UI flows, and a BroadcastReceiver
@@ -96,10 +96,6 @@ class AutoImportService(
 
         return ImportSummary(imported = imported, unprocessed = unprocessed, failures = failures)
     }
-
-    /** Backwards-compat alias — pre-refactor callers passed a SAF treeUri we no longer need. */
-    @Deprecated("Use importAll() — sync directory is now hardcoded under app media dir.", ReplaceWith("importAll()"))
-    suspend fun importAllInTree(treeUri: android.net.Uri): ImportSummary = importAll()
 
     private data class ParsedManifest(
         val keepNames: Set<String>,
