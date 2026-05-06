@@ -435,6 +435,10 @@ class PlaybackManager(
             errorTracker.reset()
             _shuffleEnabled.value = false
             preferences.shuffleEnabled = false
+            // Also clear the player-route restore flag so the next Activity launch lands on
+            // Songs (the default), not on the empty Player screen. Belt-and-suspenders with
+            // the isInstrumentationRunning() gate in MigsMusicApp.
+            preferences.wasOnPlayerRoute = false
             _isPlayerPlaying.value = false
             _uiState.value = PlaybackUiState()
             _currentPositionMs.value = 0L

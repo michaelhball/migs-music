@@ -42,6 +42,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.migsmusic.AppContainer
+import com.migsmusic.isInstrumentationRunning
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -104,7 +105,15 @@ fun MigsMusicApp(
     // the NavController graph is ready (currentRoute becoming non-null is the signal). We
     // read via `remember` so the route-tracking write below can't overwrite the pref before
     // we observe it on a cold start that lands on Songs first.
-    val shouldRestorePlayerRoute = remember { appContainer.preferences.wasOnPlayerRoute }
+    //
+    // Disabled under instrumentation: tests recreate the Activity many times without
+    // navigating, so a stale `true` pref would land every test on the Player screen with
+    // "Nothing playing yet" — which made the smoke suite hang on assertions that expect
+    // the default Songs route.
+    val shouldRestorePlayerRoute =
+        remember {
+            !isInstrumentationRunning() && appContainer.preferences.wasOnPlayerRoute
+        }
     var didRestorePlayerRoute by remember { mutableStateOf(false) }
 
     // Single effect: gates on `currentRoute != null` (i.e. the NavHost has registered its

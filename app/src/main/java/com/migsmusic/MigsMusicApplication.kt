@@ -78,19 +78,6 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
     }
 
     /**
-     * Detects whether the process is hosting androidx instrumentation tests. The androidx.test
-     * runtime is only on the classpath when the test APK is loaded; in production builds the
-     * lookup throws ClassNotFoundException. Cheap, no setup ceremony, no build-config plumbing.
-     */
-    private fun isInstrumentationRunning(): Boolean =
-        try {
-            Class.forName("androidx.test.platform.app.InstrumentationRegistry")
-            true
-        } catch (e: ClassNotFoundException) {
-            false
-        }
-
-    /**
      * Album art is small, immutable per song, and reused across many list rows. Default Coil
      * sizing (~25% RAM, ~2% disk) is fine for one-off images but underuses disk for our case.
      * Bumping disk to 64MB lets the entire library's album art live in cache after one pass;
