@@ -31,6 +31,7 @@ class AutoImportService(
     suspend fun importAllInTree(treeUri: Uri): List<DiscoveredM3u> {
         val files = scanForM3uFiles(context, treeUri)
         if (files.isEmpty()) return emptyList()
+        Log.i(TAG, "importAllInTree: ${files.size} m3u file(s) found")
         // Snapshot the library once — the matcher pre-indexes from it, so re-running per
         // file would just rebuild the same maps.
         val library = libraryRepository.observeAllSongs().first()
@@ -56,26 +57,43 @@ class AutoImportService(
         runCatching {
             val content =
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(file.uri)?.use { it.bufferedReader().readText() }
-                } ?: return@runCatching false
+                    // Prefer direct fs read when available — the OnePlus ExternalStorageProvider
+                    // returns 0 children for /sdcard/Music via SAF, but per-file content read
+                    // through the same provider works fine. Falling back to SAF on devices
+                    // where we couldn't get an absolutePath (cloud-provider trees, removable
+                    // SD cards we haven't taught the path mapping for yet).
+                    file.absolutePath?.let { java.io.File(it).readText() }
+                        ?: context.contentResolver.openInputStream(file.uri)?.use { it.bufferedReader().readText() }
+                } ?: run {
+                    Log.w(TAG, "  content read returned null for ${file.displayName}")
+                    return@runCatching false
+                }
             if (content.isBlank()) return@runCatching false
 
-            val songIds =
+            val matchResult =
                 withContext(Dispatchers.Default) {
-                    val entries = parseM3u(content)
-                    matchM3uEntries(entries, library).matched.map { it.song.id }
+                    matchM3uEntries(parseM3u(content), library)
                 }
+            val songIds = matchResult.matched.map { it.song.id }
+            Log.i(
+                TAG,
+                "${file.displayName}: matched=${matchResult.matched.size} unmatched=${matchResult.unmatched.size}",
+            )
             if (songIds.isEmpty()) return@runCatching false
 
             val playlistName =
                 file.displayName.removeSuffix(".m3u").removeSuffix(".m3u8")
-            playlistRepository.upsertSyncedPlaylist(playlistName, songIds)
+            val playlistId = playlistRepository.upsertSyncedPlaylist(playlistName, songIds)
+            Log.i(TAG, "  upserted playlist id=$playlistId with ${songIds.size} song(s)")
 
-            // Best-effort delete. If it fails (permission revoked, transient IO), the next
-            // scan will try again — the upsert is idempotent.
-            withContext(Dispatchers.IO) {
-                runCatching { DocumentFile.fromSingleUri(context, file.uri)?.delete() }
-            }
+            // Best-effort delete. SAF delete via the constructed document URI works on
+            // OnePlus even though SAF *listing* is broken — confirmed via a write-probe test.
+            val deleted =
+                withContext(Dispatchers.IO) {
+                    runCatching { DocumentFile.fromSingleUri(context, file.uri)?.delete() ?: false }
+                        .getOrDefault(false)
+                }
+            if (!deleted) Log.w(TAG, "  source delete failed for ${file.displayName}")
             true
         }.getOrElse {
             Log.w(TAG, "Auto-import failed for ${file.displayName}", it)
