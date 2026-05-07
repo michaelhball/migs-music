@@ -213,13 +213,8 @@ fun MigsMusicApp(
                         onOpenAlbums = { navController.navigate("albums") },
                         onOpenArtists = { navController.navigate("artists") },
                         onOpenSettings = { navController.navigate("settings") },
-                        onGoToAlbum = { album, artist ->
-                            val key = "$album|||$artist"
-                            navController.navigate("album/${java.net.URLEncoder.encode(key, "UTF-8")}")
-                        },
-                        onGoToArtist = { artist ->
-                            navController.navigate("artist/${java.net.URLEncoder.encode(artist, "UTF-8")}")
-                        },
+                        onGoToAlbum = { album, artist -> navController.navigate(albumRoute(album, artist)) },
+                        onGoToArtist = { artist -> navController.navigate(artistRoute(artist)) },
                     )
                 }
                 composable("albums") {
@@ -243,9 +238,7 @@ fun MigsMusicApp(
                         libraryViewModel = libraryViewModel,
                         playlistsViewModel = playlistsViewModel,
                         currentSongId = playbackState.currentSong?.songId,
-                        onGoToArtist = { artist ->
-                            navController.navigate("artist/${java.net.URLEncoder.encode(artist, "UTF-8")}")
-                        },
+                        onGoToArtist = { artist -> navController.navigate(artistRoute(artist)) },
                     )
                 }
                 composable("artists") {
@@ -269,34 +262,24 @@ fun MigsMusicApp(
                         libraryViewModel = libraryViewModel,
                         playlistsViewModel = playlistsViewModel,
                         currentSongId = playbackState.currentSong?.songId,
-                        onGoToAlbum = { album, artist ->
-                            val key = "$album|||$artist"
-                            navController.navigate("album/${java.net.URLEncoder.encode(key, "UTF-8")}")
-                        },
+                        onGoToAlbum = { album, artist -> navController.navigate(albumRoute(album, artist)) },
                     )
                 }
                 composable("folders") {
                     FoldersRoute(
                         libraryViewModel = libraryViewModel,
                         currentSongId = playbackState.currentSong?.songId,
-                        onOpenFolder = { folder ->
-                            navController.navigate("folder/${folder.encodedPath()}")
-                        },
+                        onOpenFolder = { folder -> navController.navigate(folderRoute(folder.path)) },
                         onNavigateToFolder = { path ->
                             // Tapping a breadcrumb ancestor pops back to it if it's on the
                             // stack rather than pushing a duplicate. Fresh navigate as fallback.
-                            val target = "folder/${java.net.URLEncoder.encode(path, "UTF-8")}"
+                            val target = folderRoute(path)
                             if (!navController.popBackStack(route = target, inclusive = false)) {
                                 navController.navigate(target)
                             }
                         },
-                        onGoToAlbum = { album, artist ->
-                            val key = "$album|||$artist"
-                            navController.navigate("album/${java.net.URLEncoder.encode(key, "UTF-8")}")
-                        },
-                        onGoToArtist = { artist ->
-                            navController.navigate("artist/${java.net.URLEncoder.encode(artist, "UTF-8")}")
-                        },
+                        onGoToAlbum = { album, artist -> navController.navigate(albumRoute(album, artist)) },
+                        onGoToArtist = { artist -> navController.navigate(artistRoute(artist)) },
                     )
                 }
                 composable(
@@ -312,23 +295,16 @@ fun MigsMusicApp(
                         libraryViewModel = libraryViewModel,
                         playlistsViewModel = playlistsViewModel,
                         currentSongId = playbackState.currentSong?.songId,
-                        onOpenFolder = { folder ->
-                            navController.navigate("folder/${folder.encodedPath()}")
-                        },
+                        onOpenFolder = { folder -> navController.navigate(folderRoute(folder.path)) },
                         onGoUp = { navController.popBackStack() },
                         onNavigateToFolder = { path ->
-                            val target = "folder/${java.net.URLEncoder.encode(path, "UTF-8")}"
+                            val target = folderRoute(path)
                             if (!navController.popBackStack(route = target, inclusive = false)) {
                                 navController.navigate(target)
                             }
                         },
-                        onGoToAlbum = { album, artist ->
-                            val key = "$album|||$artist"
-                            navController.navigate("album/${java.net.URLEncoder.encode(key, "UTF-8")}")
-                        },
-                        onGoToArtist = { artist ->
-                            navController.navigate("artist/${java.net.URLEncoder.encode(artist, "UTF-8")}")
-                        },
+                        onGoToAlbum = { album, artist -> navController.navigate(albumRoute(album, artist)) },
+                        onGoToArtist = { artist -> navController.navigate(artistRoute(artist)) },
                     )
                 }
                 composable("playlists") {
@@ -371,13 +347,11 @@ fun MigsMusicApp(
                         onDismiss = { navController.popBackStack() },
                         onOpenArtist = { artist ->
                             navController.popBackStack()
-                            navController.navigate("artist/${java.net.URLEncoder.encode(artist, "UTF-8")}")
+                            navController.navigate(artistRoute(artist))
                         },
                         onOpenAlbum = { album, artist ->
-                            // Reuse the same album-key construction as AlbumsRoute → AlbumDetailRoute.
-                            val key = "$album|||$artist"
                             navController.popBackStack()
-                            navController.navigate("album/${java.net.URLEncoder.encode(key, "UTF-8")}")
+                            navController.navigate(albumRoute(album, artist))
                         },
                     )
                 }
@@ -392,6 +366,27 @@ private data class TopLevelDestination(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
     val testTag: String,
 )
+
+/**
+ * Encode a string for use in a single nav-route path segment. Wraps `URLEncoder.encode`
+ * so the call sites that build nav targets don't all import + repeat the boilerplate.
+ */
+private fun encodeRouteSegment(value: String): String =
+    java.net.URLEncoder.encode(value, "UTF-8")
+
+/**
+ * Build the nav route for an album-detail screen. Album keys are `album|||artist` so the
+ * (album, artist) pair survives a single path segment without escaping woes — encode
+ * the whole composite key.
+ */
+private fun albumRoute(
+    album: String,
+    artist: String,
+): String = "album/${encodeRouteSegment("$album|||$artist")}"
+
+private fun artistRoute(artist: String): String = "artist/${encodeRouteSegment(artist)}"
+
+private fun folderRoute(path: String): String = "folder/${encodeRouteSegment(path)}"
 
 @Composable
 private fun PermissionGate(

@@ -60,13 +60,15 @@ internal fun QueueRoute(
     }
 
     // Compute the LazyColumn index where upcoming items start so the reorderable callback
-    // can translate full-list indices back to upcoming-sublist indices.
-    val headerCount = 1
-    val historyCount = if (state.history.isNotEmpty()) 1 + state.history.size else 0
-    val currentCount = if (state.currentSong != null) 2 else 0
-    val upNextHeaderCount = if (state.upcoming.isNotEmpty()) 1 else 0
-    val upcomingStart = headerCount + historyCount + currentCount + upNextHeaderCount
+    // can translate full-list indices back to upcoming-sublist indices. Memoised on the
+    // structural inputs (history size, presence of current song, upcoming size) — without
+    // the remember, these recompute on every position tick (twice a second while playing).
     val upcoming = state.upcoming
+    val headerCount = 1
+    val historyCount = remember(state.history.size) { if (state.history.isNotEmpty()) 1 + state.history.size else 0 }
+    val currentCount = remember(state.currentSong != null) { if (state.currentSong != null) 2 else 0 }
+    val upNextHeaderCount = remember(upcoming.isNotEmpty()) { if (upcoming.isNotEmpty()) 1 else 0 }
+    val upcomingStart = headerCount + historyCount + currentCount + upNextHeaderCount
 
     val reorderState =
         rememberReorderableLazyListState(lazyListState) { from, to ->
