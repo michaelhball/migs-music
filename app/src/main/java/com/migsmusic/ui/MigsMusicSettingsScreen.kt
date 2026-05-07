@@ -17,8 +17,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +47,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun SettingsRoute(
     libraryRepository: LibraryRepository,
+    playerViewModel: PlayerViewModel,
     onGoBack: () -> Unit,
 ) {
     var lastRescanCount by remember { mutableStateOf<Int?>(null) }
@@ -97,6 +100,21 @@ internal fun SettingsRoute(
                     }
                 },
             ) { Text(if (rescanning) "Scanning…" else "Rescan") }
+        }
+
+        HorizontalDivider()
+        SettingsSectionHeader("Playback")
+        val confirmQueueJump by playerViewModel.confirmQueueJump.collectAsState()
+        SettingsRow(
+            title = "Confirm before jumping in queue",
+            subtitle =
+                "Tapping a song in the queue asks for confirmation before switching to " +
+                    "it. Off = single tap jumps immediately.",
+        ) {
+            Switch(
+                checked = confirmQueueJump,
+                onCheckedChange = { playerViewModel.setConfirmQueueJump(it) },
+            )
         }
 
         HorizontalDivider()

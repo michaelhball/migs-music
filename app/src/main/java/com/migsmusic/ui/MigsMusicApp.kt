@@ -78,7 +78,10 @@ fun MigsMusicApp(
         )
     val playerViewModel: PlayerViewModel =
         viewModel(
-            factory = ViewModelFactory { PlayerViewModel(appContainer.playbackManager) },
+            factory =
+                ViewModelFactory {
+                    PlayerViewModel(appContainer.playbackManager, appContainer.preferences)
+                },
         )
 
     val navController = rememberNavController()
@@ -336,6 +339,7 @@ fun MigsMusicApp(
                 composable("settings") {
                     SettingsRoute(
                         libraryRepository = appContainer.libraryRepository,
+                        playerViewModel = playerViewModel,
                         onGoBack = { navController.popBackStack() },
                     )
                 }

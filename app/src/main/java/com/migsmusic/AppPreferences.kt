@@ -59,6 +59,17 @@ class AppPreferences(context: Context) {
         set(value) = prefs.edit { putBoolean(KEY_SHUFFLE, value) }
 
     /**
+     * When true, tapping a song row in the queue asks for confirmation before jumping to
+     * it. Mirrors how desktop music apps treat double-click vs single-click — guards
+     * against accidental song switches when scrolling/inspecting the queue. Defaults to
+     * true because the cost of the occasional extra tap is much smaller than the
+     * cost of an accidental skip mid-listen.
+     */
+    var confirmQueueJump: Boolean
+        get() = prefs.getBoolean(KEY_CONFIRM_QUEUE_JUMP, true)
+        set(value) = prefs.edit { putBoolean(KEY_CONFIRM_QUEUE_JUMP, value) }
+
+    /**
      * Whether the user was on the full-screen player route the last time we observed nav state.
      * On cold start, if true, we route the user back to the player so they don't have to drill
      * back in. Updated whenever the current route changes.
@@ -86,6 +97,7 @@ class AppPreferences(context: Context) {
         const val KEY_ARTIST_DETAIL_SONG_SORT = "artist_detail_song_sort_order"
         const val KEY_PLAYLIST_SORT = "playlist_sort_order"
         const val KEY_SHUFFLE = "shuffle_enabled"
+        const val KEY_CONFIRM_QUEUE_JUMP = "confirm_queue_jump"
         const val KEY_PLAYER_ROUTE = "was_on_player_route"
         const val KEY_DISCOVERED_M3U_CACHE = "discovered_m3u_cache_tsv"
     }

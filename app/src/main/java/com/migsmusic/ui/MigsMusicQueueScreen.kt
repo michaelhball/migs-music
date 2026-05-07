@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +42,24 @@ internal fun QueueRoute(
     val state by playerViewModel.playbackUiState.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
     var saveDialogVisible by remember { mutableStateOf(false) }
+    var pendingJump by remember { mutableStateOf<PlaybackSongUiModel?>(null) }
+    if (pendingJump != null) {
+        val target = pendingJump!!
+        AlertDialog(
+            onDismissRequest = { pendingJump = null },
+            title = { Text("Jump to this song?") },
+            text = { Text("Play \"${target.title}\" by ${target.artist} now?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    playerViewModel.jumpToEntry(target.entryId)
+                    pendingJump = null
+                }) { Text("Jump") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingJump = null }) { Text("Cancel") }
+            },
+        )
+    }
     if (saveDialogVisible) {
         NameDialog(
             title = "Save queue as playlist",
@@ -160,7 +179,16 @@ internal fun QueueRoute(
             itemsIndexed(state.history, key = { _, item -> item.entryId }) { _, song ->
                 QueueRow(
                     song = song,
-                    onJump = { playerViewModel.jumpToEntry(song.entryId) },
+                    // Read confirmQueueJump at click time, not at composition time, so
+                    // toggling the setting doesn't require invalidating every memoised
+                    // onJump in the list.
+                    onJump = {
+                        if (playerViewModel.confirmQueueJump.value) {
+                            pendingJump = song
+                        } else {
+                            playerViewModel.jumpToEntry(song.entryId)
+                        }
+                    },
                     rowTag = UiTestTags.QueueHistoryRow,
                 )
             }
@@ -179,21 +207,17 @@ internal fun QueueRoute(
         if (state.upcoming.isNotEmpty()) {
             item { SectionHeader("Up Next") }
             itemsIndexed(state.upcoming, key = { _, item -> item.entryId }) { index, song ->
-                val lastIndex = state.upcoming.lastIndex
-                val onJump = remember(song.entryId) { { playerViewModel.jumpToEntry(song.entryId) } }
+                val onJump =
+                    remember(song.entryId) {
+                        {
+                            if (playerViewModel.confirmQueueJump.value) {
+                                pendingJump = song
+                            } else {
+                                playerViewModel.jumpToEntry(song.entryId)
+                            }
+                        }
+                    }
                 val onRemove = remember(song.entryId) { { playerViewModel.removeUpcoming(song.entryId) } }
-                val onMoveUp =
-                    remember(song.entryId, index) {
-                        {
-                            if (index > 0) playerViewModel.moveUpcoming(song.entryId, index - 1)
-                        }
-                    }
-                val onMoveDown =
-                    remember(song.entryId, index, lastIndex) {
-                        {
-                            if (index < lastIndex) playerViewModel.moveUpcoming(song.entryId, index + 1)
-                        }
-                    }
                 val rowTag = remember(index) { UiTestTags.queueUpcomingRow(index) }
                 ReorderableItem(reorderState, key = song.entryId) { isDragging ->
                     // Note: SwipeToDismissBox + ReorderableItem nested together causes a Compose
@@ -203,10 +227,6 @@ internal fun QueueRoute(
                         song = song,
                         onJump = onJump,
                         onRemove = onRemove,
-                        onMoveUp = onMoveUp,
-                        onMoveDown = onMoveDown,
-                        canMoveUp = index > 0,
-                        canMoveDown = index < lastIndex,
                         rowTag = rowTag,
                         dragHandleModifier = Modifier.draggableHandle(),
                     )
@@ -221,10 +241,6 @@ internal fun QueueRow(
     song: PlaybackSongUiModel,
     onJump: () -> Unit,
     onRemove: (() -> Unit)? = null,
-    onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null,
-    canMoveUp: Boolean = false,
-    canMoveDown: Boolean = false,
     highlight: Boolean = false,
     rowTag: String? = null,
     dragHandleModifier: Modifier? = null,
@@ -246,22 +262,6 @@ internal fun QueueRow(
                 MaterialTheme.colorScheme.surface
             },
         actions = {
-            if (onMoveUp != null) {
-                SmallActionButton(
-                    label = "Up",
-                    modifier = Modifier.testTag(UiTestTags.QueueRowMoveUp),
-                    onClick = onMoveUp,
-                    enabled = canMoveUp,
-                )
-            }
-            if (onMoveDown != null) {
-                SmallActionButton(
-                    label = "Down",
-                    modifier = Modifier.testTag(UiTestTags.QueueRowMoveDown),
-                    onClick = onMoveDown,
-                    enabled = canMoveDown,
-                )
-            }
             if (onRemove != null) {
                 IconButton(
                     onClick = onRemove,
