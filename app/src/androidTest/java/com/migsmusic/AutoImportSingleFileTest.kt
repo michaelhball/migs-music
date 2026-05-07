@@ -45,6 +45,7 @@ class AutoImportSingleFileTest {
     private lateinit var service: AutoImportService
     private lateinit var libraryRepository: LibraryRepository
     private lateinit var playlistRepository: PlaylistRepository
+    private lateinit var orphanAudioTracker: OrphanAudioTracker
     private lateinit var tempDir: File
     private val context: Context = ApplicationProvider.getApplicationContext()
 
@@ -71,13 +72,17 @@ class AutoImportSingleFileTest {
 
                 override fun stopAndClearQueue() = error("not expected to fire in these tests")
             }
+        // Reset the tracker's prefs so tests start with a known empty state.
+        context.getSharedPreferences("migs-music-orphan-audio", Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        orphanAudioTracker = OrphanAudioTracker(context)
         service =
             AutoImportService(
                 context = context,
                 playlistRepository = playlistRepository,
                 libraryRepository = libraryRepository,
                 playbackController = fakeController,
-                orphanAudioTracker = OrphanAudioTracker(context),
+                orphanAudioTracker = orphanAudioTracker,
             )
 
         tempDir = File(context.cacheDir, "auto-import-test-${UUID.randomUUID()}")
@@ -257,6 +262,122 @@ class AutoImportSingleFileTest {
             assertFalse(synced.first().id == manualId)
             val syncedSongs = playlistRepository.observePlaylistSongs(synced.first().id).first().map { it.songId }
             assertEquals(listOf(1L), syncedSongs)
+        }
+
+    @Test
+    fun perSongRemovalCapturesOrphanUriAndDropsRow() =
+        runBlocking {
+            // Three songs in the library, all wired into a single synced playlist.
+            val library =
+                listOf(
+                    fakeSong(1L, "Hey Jude", "The Beatles"),
+                    fakeSong(2L, "Yesterday", "The Beatles"),
+                    fakeSong(3L, "Let It Be", "The Beatles"),
+                )
+            db.songDao().upsertAll(library)
+            val first =
+                writeM3u(
+                    "Beatles.m3u",
+                    """
+                    #EXTM3U
+                    #EXTINF:431,The Beatles - Hey Jude
+                    /a.mp3
+                    #EXTINF:125,The Beatles - Yesterday
+                    /b.mp3
+                    #EXTINF:243,The Beatles - Let It Be
+                    /c.mp3
+                    """.trimIndent(),
+                )
+            assertEquals(
+                SingleFileOutcome.Imported,
+                service.autoImportSingleFile(first, M3uMatcherIndex(library), deleteOrphans = true),
+            )
+            assertEquals(0, orphanAudioTracker.count.value)
+
+            // Second sync: same playlist, but Yesterday is gone. Library still has all three
+            // songs (MediaStore hasn't changed yet — file's still on disk). With
+            // deleteOrphans=true we expect Yesterday's row to be dropped AND its content URI
+            // captured for later cleanup-via-Settings.
+            val second =
+                writeM3u(
+                    "Beatles.m3u",
+                    """
+                    #EXTM3U
+                    #EXTINF:431,The Beatles - Hey Jude
+                    /a.mp3
+                    #EXTINF:243,The Beatles - Let It Be
+                    /c.mp3
+                    """.trimIndent(),
+                )
+            assertEquals(
+                SingleFileOutcome.Imported,
+                service.autoImportSingleFile(second, M3uMatcherIndex(library), deleteOrphans = true),
+            )
+
+            // Yesterday's row should be gone, others intact.
+            assertEquals(setOf(1L, 3L), db.songDao().getAllSongIds().toSet())
+            // Tracker should now hold Yesterday's content URI.
+            assertEquals(1, orphanAudioTracker.count.value)
+            assertEquals(
+                "content://media/external/audio/media/2",
+                orphanAudioTracker.all().single().toString(),
+            )
+            // Playlist should also reflect the new contents.
+            val synced = playlistRepository.getSyncedPlaylists().single()
+            val ids = playlistRepository.observePlaylistSongs(synced.id).first().map { it.songId }
+            assertEquals(listOf(1L, 3L), ids)
+        }
+
+    @Test
+    fun perSongRemovalSkipsTrackerWhenDeleteOrphansFalse() =
+        runBlocking {
+            // Same setup as the orphan test but with deleteOrphans=false. Song should still
+            // come out of the playlist on re-import, but its row should remain in `songs`
+            // and the orphan tracker should stay empty — that's what the Mac toggle controls.
+            val library =
+                listOf(
+                    fakeSong(1L, "Hey Jude", "The Beatles"),
+                    fakeSong(2L, "Yesterday", "The Beatles"),
+                )
+            db.songDao().upsertAll(library)
+            assertEquals(
+                SingleFileOutcome.Imported,
+                service.autoImportSingleFile(
+                    writeM3u(
+                        "Beatles.m3u",
+                        """
+                        #EXTM3U
+                        #EXTINF:431,The Beatles - Hey Jude
+                        /a.mp3
+                        #EXTINF:125,The Beatles - Yesterday
+                        /b.mp3
+                        """.trimIndent(),
+                    ),
+                    M3uMatcherIndex(library),
+                    deleteOrphans = false,
+                ),
+            )
+
+            assertEquals(
+                SingleFileOutcome.Imported,
+                service.autoImportSingleFile(
+                    writeM3u(
+                        "Beatles.m3u",
+                        """
+                        #EXTM3U
+                        #EXTINF:431,The Beatles - Hey Jude
+                        /a.mp3
+                        """.trimIndent(),
+                    ),
+                    M3uMatcherIndex(library),
+                    deleteOrphans = false,
+                ),
+            )
+
+            // Both song rows still present.
+            assertEquals(setOf(1L, 2L), db.songDao().getAllSongIds().toSet())
+            // Tracker untouched.
+            assertEquals(0, orphanAudioTracker.count.value)
         }
 
     private fun writeM3u(
