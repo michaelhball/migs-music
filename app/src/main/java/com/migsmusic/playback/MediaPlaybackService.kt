@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.migsmusic.MainActivity
@@ -30,6 +31,17 @@ class MediaPlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         ensureNotificationChannel()
+        // Explicitly install Media3's default notification provider. Media3 does this
+        // lazily by default, but in some configurations (depending on the order of
+        // startForeground vs. session activation) the lazy path doesn't trigger and our
+        // bootstrap notification never gets replaced. Setting it eagerly here removes
+        // that ambiguity.
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId(CHANNEL_ID)
+                .setNotificationId(BOOTSTRAP_NOTIF_ID)
+                .build(),
+        )
         mediaSession = playbackManager.getOrCreateMediaSession(this)
     }
 
@@ -102,18 +114,30 @@ class MediaPlaybackService : MediaSessionService() {
                 launchIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText("Preparing playback…")
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setContentIntent(pendingIntent)
-            .build()
+        // If Media3 takes over within a few hundred ms (the common case) this notification
+        // is never seen. If it doesn't (FGS race / weird Media3 state), reflect the current
+        // song so the user sees something useful rather than a confusing "Preparing
+        // playback…" placeholder. Title/artist read from the latest UI state — if there's
+        // no song yet, fall back to the app name with no subtitle.
+        val current = playbackManager.uiState.value.currentSong
+        val builder =
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                .setContentIntent(pendingIntent)
+        if (current != null) {
+            builder
+                .setContentTitle(current.title)
+                .setContentText(current.artist)
+        } else {
+            builder.setContentTitle(getString(R.string.app_name))
+        }
+        return builder.build()
     }
 
     companion object {
