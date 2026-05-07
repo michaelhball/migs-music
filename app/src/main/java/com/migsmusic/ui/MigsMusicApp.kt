@@ -1,5 +1,8 @@
 package com.migsmusic.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -203,10 +206,18 @@ fun MigsMusicApp(
                 return@Scaffold
             }
 
+            // Navigation Compose's default fade is 700ms — noticeably sluggish on every
+            // transition, especially the player ↔ queue round trip. 150ms reads as polished
+            // but doesn't make the user wait. Same spec for pop transitions so back-nav
+            // feels symmetric.
             NavHost(
                 navController = navController,
                 startDestination = "songs",
                 modifier = Modifier.padding(innerPadding),
+                enterTransition = { fadeIn(animationSpec = tween(150)) },
+                exitTransition = { fadeOut(animationSpec = tween(150)) },
+                popEnterTransition = { fadeIn(animationSpec = tween(150)) },
+                popExitTransition = { fadeOut(animationSpec = tween(150)) },
             ) {
                 composable("songs") {
                     SongsRoute(
