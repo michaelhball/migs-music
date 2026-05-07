@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -51,7 +50,6 @@ internal fun SongsRoute(
     currentSongId: Long?,
     onOpenAlbums: () -> Unit,
     onOpenArtists: () -> Unit,
-    onOpenSettings: () -> Unit,
     onGoToAlbum: (album: String, artist: String) -> Unit,
     onGoToArtist: (artist: String) -> Unit,
 ) {
@@ -120,9 +118,6 @@ internal fun SongsRoute(
                 nameOf = { it.name },
                 onSelect = libraryViewModel::setSongSortOrder,
             )
-            IconButton(onClick = onOpenSettings) {
-                Icon(Icons.Default.Settings, contentDescription = "Settings")
-            }
         }
         // Scan happens automatically via cold-start + ContentObserver; the only thing worth
         // surfacing is an error if scan failed. Otherwise: empty.
