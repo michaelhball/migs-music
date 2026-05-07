@@ -689,10 +689,14 @@ class PlaybackManager(
         val sanitized = restored.queueState.sanitize(songsById.keys) ?: return
         queueEngine.restore(sanitized, restored.nextEntrySeed)
         player.repeatMode = restored.repeatMode
+        // Restore queue and position, but never auto-resume. A cold-start surprise of music
+        // suddenly playing is jarring — the user opened the app to do something, not because
+        // they explicitly want playback. Tapping play is one tap; an unwanted blast of audio
+        // in a quiet room is worse.
         syncPlayer(
             queueState = sanitized,
             startPositionMs = restored.currentPositionMs,
-            playWhenReady = restored.isPlaying,
+            playWhenReady = false,
         )
     }
 
