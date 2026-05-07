@@ -11,6 +11,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.migsmusic.data.LibrarySyncObserver
+import com.migsmusic.data.OrphanAudioTracker
 import com.migsmusic.data.local.AppDatabase
 import com.migsmusic.data.local.MIGRATION_2_3
 import com.migsmusic.data.local.MIGRATION_3_4
@@ -59,6 +60,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
             )
 
         val preferences = AppPreferences(applicationContext)
+        val orphanAudioTracker = OrphanAudioTracker(applicationContext)
 
         val playbackManager =
             PlaybackManager(
@@ -74,6 +76,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
                 playlistRepository = playlistRepository,
                 libraryRepository = libraryRepository,
                 playbackController = playbackManager,
+                orphanAudioTracker = orphanAudioTracker,
             )
 
         appContainer =
@@ -83,6 +86,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
                 playbackManager = playbackManager,
                 preferences = preferences,
                 autoImportService = autoImportService,
+                orphanAudioTracker = orphanAudioTracker,
             )
 
         // Watch MediaStore for new audio files; auto-rescan when changes settle so the user
@@ -131,6 +135,7 @@ data class AppContainer(
     val playbackManager: PlaybackManager,
     val preferences: AppPreferences,
     val autoImportService: AutoImportService,
+    val orphanAudioTracker: OrphanAudioTracker,
 )
 
 /**

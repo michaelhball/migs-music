@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.migsmusic.data.OrphanAudioTracker
 import com.migsmusic.data.local.AppDatabase
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.repository.LibraryRepository
@@ -76,6 +77,7 @@ class AutoImportSingleFileTest {
                 playlistRepository = playlistRepository,
                 libraryRepository = libraryRepository,
                 playbackController = fakeController,
+                orphanAudioTracker = OrphanAudioTracker(context),
             )
 
         tempDir = File(context.cacheDir, "auto-import-test-${UUID.randomUUID()}")

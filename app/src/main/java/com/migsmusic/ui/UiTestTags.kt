@@ -7,6 +7,7 @@ object UiTestTags {
     const val FoldersTab = "tab_folders"
     const val PlaylistsTab = "tab_playlists"
     const val QueueTab = "tab_queue"
+    const val SettingsTab = "tab_settings"
     const val SongsScreen = "screen_songs"
     const val FoldersScreen = "screen_folders"
     const val FolderDetailScreen = "screen_folder_detail"

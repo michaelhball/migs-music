@@ -1,5 +1,11 @@
 package com.migsmusic.ui
 
+import android.app.Activity
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,12 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -27,9 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.migsmusic.BuildConfig
+import com.migsmusic.data.OrphanAudioTracker
 import com.migsmusic.data.repository.LibraryRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +52,7 @@ import kotlinx.coroutines.launch
 internal fun SettingsRoute(
     libraryRepository: LibraryRepository,
     playerViewModel: PlayerViewModel,
-    onGoBack: () -> Unit,
+    orphanAudioTracker: OrphanAudioTracker,
 ) {
     var lastRescanCount by remember { mutableStateOf<Int?>(null) }
     var rescanning by remember { mutableStateOf(false) }
@@ -62,22 +66,11 @@ internal fun SettingsRoute(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onGoBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                text = "Settings",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        }
+        Text(
+            text = "Settings",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+        )
 
         SettingsSectionHeader("Library")
         SettingsRow(
@@ -119,17 +112,7 @@ internal fun SettingsRoute(
 
         HorizontalDivider()
         SettingsSectionHeader("Sync")
-        SettingsRow(
-            title = "Clean up orphan audio files",
-            subtitle =
-                "Audio files marked as orphaned by a sync (where the song was removed from " +
-                    "every synced playlist) are tracked here. Deleting requires a system " +
-                    "confirmation dialog — not yet implemented; planned for a future version.",
-        ) {
-            Button(enabled = false, onClick = { /* TODO: MediaStore.createDeleteRequest flow */ }) {
-                Text("Coming soon")
-            }
-        }
+        OrphanAudioCleanupRow(orphanAudioTracker = orphanAudioTracker)
 
         HorizontalDivider()
         SettingsSectionHeader("About")
@@ -143,6 +126,62 @@ internal fun SettingsRoute(
         )
 
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Clean-up row for files that the sync flow marked as orphaned. The actual deletion goes
+ * through `MediaStore.createDeleteRequest` — the only legal way to delete files we don't
+ * own (anything in /sdcard/Music). The system shows a confirm dialog; on user approval the
+ * files are gone and we clear the tracker. On cancel/error we leave the tracker alone so a
+ * future tap retries.
+ *
+ * createDeleteRequest is API 30+. minSdk on this app is 26, so we degrade gracefully — pre-30
+ * users see a "not supported" subtitle and a disabled button. In practice no one running
+ * Android 8/9/10 is hitting this code path because the sync feature itself requires app-owned
+ * media-dir writes which post-10 Androids handle differently.
+ */
+@Composable
+private fun OrphanAudioCleanupRow(orphanAudioTracker: OrphanAudioTracker) {
+    val orphanCount by orphanAudioTracker.count.collectAsState()
+    val context = LocalContext.current
+    val launcher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartIntentSenderForResult(),
+        ) { result ->
+            // RESULT_OK = user approved, the system already removed the files. Cancel/back =
+            // tracker stays so the user can retry. Other result codes are also a "no" — no
+            // partial cleanup of the tracker either way.
+            if (result.resultCode == Activity.RESULT_OK) {
+                orphanAudioTracker.clear()
+            }
+        }
+    SettingsRow(
+        title = "Clean up orphan audio files",
+        subtitle =
+            when {
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.R ->
+                    "Requires Android 11 or later (system delete dialog wasn't available before)."
+                orphanCount == 0 ->
+                    "Nothing to clean up. Files appear here when a sync removes the last " +
+                        "playlist that referenced them."
+                else ->
+                    "$orphanCount file${if (orphanCount == 1) "" else "s"} waiting to be removed " +
+                        "from your phone. Tap Clean up to confirm via the system dialog."
+            },
+    ) {
+        Button(
+            enabled =
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && orphanCount > 0,
+            onClick = onClick@{
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@onClick
+                val uris = orphanAudioTracker.all()
+                if (uris.isEmpty()) return@onClick
+                val request =
+                    MediaStore.createDeleteRequest(context.contentResolver, uris)
+                launcher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+            },
+        ) { Text("Clean up") }
     }
 }
 

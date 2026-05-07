@@ -2,6 +2,7 @@ package com.migsmusic.playlistimport
 
 import android.content.Context
 import android.util.Log
+import com.migsmusic.data.OrphanAudioTracker
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackController
@@ -45,6 +46,7 @@ class AutoImportService(
     private val playlistRepository: PlaylistRepository,
     private val libraryRepository: LibraryRepository,
     private val playbackController: PlaybackController,
+    private val orphanAudioTracker: OrphanAudioTracker,
 ) {
     suspend fun importAll(): ImportSummary {
         val files = scanForM3uFiles()
@@ -189,12 +191,14 @@ class AutoImportService(
      * Settings screen that runs in the foreground and can show a system confirm.
      */
     private suspend fun requestOrphanAudioDeletion(songIds: List<Long>) {
-        // Drop the SongEntity rows from Room so they don't show as ghost entries with no
-        // playable file. The actual audio file under /sdcard/Music remains until the user
-        // triggers a MediaStore delete request via the Settings UI (planned). Cleanest
-        // path that doesn't require SAF-on-Music (which Android refuses to grant) and
-        // doesn't pop a system dialog from a background BroadcastReceiver (illegal).
-        Log.i(TAG, "audio-cleanup: marking ${songIds.size} song row(s) as removed; files remain on disk")
+        // Capture content URIs BEFORE dropping the SongEntity rows — once they're gone, we
+        // can't reconstruct the URI, and the Settings screen needs them for
+        // MediaStore.createDeleteRequest. The actual audio file under /sdcard/Music remains
+        // until the user triggers the system delete dialog from Settings, which is the
+        // only legal path (background BroadcastReceiver can't show a system confirm).
+        val songs = libraryRepository.getSongsByIds(songIds)
+        orphanAudioTracker.add(songs.map { it.contentUri })
+        Log.i(TAG, "audio-cleanup: marking ${songIds.size} song row(s) as removed; files remain on disk pending Settings cleanup")
         libraryRepository.deleteSongs(songIds)
     }
 

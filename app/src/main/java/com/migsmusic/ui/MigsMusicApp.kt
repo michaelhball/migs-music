@@ -6,9 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -19,7 +17,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -147,30 +144,9 @@ fun MigsMusicApp(
         Scaffold(
             modifier = Modifier.testTag(UiTestTags.AppRoot),
             snackbarHost = { SnackbarHost(snackbarHostState) },
-            // Minimal top bar: just a single Settings IconButton at the right. No title
-            // (system task-switcher / status bar already show "migs music"; a Material
-            // top app bar here duplicated the system label and ate ~64dp of vertical
-            // space). This thin row is ~40dp and gives Settings a consistent home from
-            // every tab — discoverable, unobtrusive. Hidden when the full-screen player
-            // is up, same as the bottom bar.
-            topBar = {
-                if (!onPlayerRoute) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        IconButton(onClick = { navController.navigate("settings") }) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "Settings",
-                            )
-                        }
-                    }
-                }
-            },
+            // No app-level TopAppBar: the system's task switcher / status bar already
+            // shows the app name, and individual screens that need their own titles
+            // render them inline. Settings lives in the bottom nav as a 5th tab.
             bottomBar = {
                 // Same: hide the mini-player + nav bar while the full-screen player is up.
                 // It's redundant (the player is already showing) and consumes ~120dp of room.
@@ -199,6 +175,12 @@ fun MigsMusicApp(
                                     "Queue",
                                     Icons.AutoMirrored.Filled.QueueMusic,
                                     UiTestTags.QueueTab,
+                                ),
+                                TopLevelDestination(
+                                    "settings",
+                                    "Settings",
+                                    Icons.Default.Settings,
+                                    UiTestTags.SettingsTab,
                                 ),
                             ).forEach { destination ->
                                 NavigationBarItem(
@@ -374,7 +356,7 @@ fun MigsMusicApp(
                     SettingsRoute(
                         libraryRepository = appContainer.libraryRepository,
                         playerViewModel = playerViewModel,
-                        onGoBack = { navController.popBackStack() },
+                        orphanAudioTracker = appContainer.orphanAudioTracker,
                     )
                 }
                 composable("player") {
