@@ -1,5 +1,6 @@
 package com.migsmusic.playback
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -16,6 +17,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.migsmusic.AppPreferences
+import com.migsmusic.MainActivity
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaybackSessionRepository
@@ -147,6 +149,14 @@ class PlaybackManager(
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     _isPlayerPlaying.value = isPlaying
+                    // Whenever the player transitions to playing, make sure the foreground
+                    // service is up. Without this, paths that don't go through playContext
+                    // (togglePlayPause, skipToNext, restoreLastSession auto-resume, etc.)
+                    // leave us playing audio with no MediaSessionService — meaning no
+                    // lock-screen widget, no notification-shade controls, and no system
+                    // media integration. Idempotent: starting an already-running foreground
+                    // service is a no-op.
+                    if (isPlaying) ensureServiceStarted()
                     persistSnapshot()
                     scope.launch { publishUiState() }
                 }
@@ -231,7 +241,25 @@ class PlaybackManager(
 
     fun getOrCreateMediaSession(service: MediaSessionService): MediaSession {
         mediaSession?.let { return it }
-        return MediaSession.Builder(service, player).build().also { mediaSession = it }
+        // setSessionActivity wires up the lock-screen / system-media widget so tapping
+        // the body of the now-playing card opens our app at MainActivity. Without it the
+        // tap is a no-op and the user has to manually re-open the launcher to get back
+        // to the player route.
+        val launchIntent =
+            Intent(applicationContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+        val sessionActivity =
+            PendingIntent.getActivity(
+                applicationContext,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        return MediaSession.Builder(service, player)
+            .setSessionActivity(sessionActivity)
+            .build()
+            .also { mediaSession = it }
     }
 
     fun clearMediaSession() {
