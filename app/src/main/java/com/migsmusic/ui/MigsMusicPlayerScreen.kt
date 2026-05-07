@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,21 +16,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -163,9 +168,7 @@ internal fun PlayerRoute(
                     detectTapGestures(
                         onLongPress = { contextMenuOpen = true },
                     )
-                }
-                .padding(24.dp),
-        contentAlignment = Alignment.Center,
+                },
     ) {
         DropdownMenu(
             expanded = contextMenuOpen,
@@ -208,72 +211,90 @@ internal fun PlayerRoute(
             }
         }
         if (currentSong == null) {
-            Text(
-                text = "Nothing is playing yet.",
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "Nothing is playing yet.",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
             return@Box
         }
 
+        // Layout: album art fills the available area at the top; controls hug the bottom.
+        // The art's aspectRatio(1f) keeps it square — a too-wide screen leaves vertical
+        // breathing room above/below the art rather than cropping it.
         Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
         ) {
-            AlbumArtImage(
-                uri = currentSong.albumArtUri,
+            Box(
                 modifier =
                     Modifier
-                        .size(220.dp)
-                        .clip(MaterialTheme.shapes.large)
-                        .then(albumArtDragModifier)
-                        .testTag(UiTestTags.PlayerAlbumArt),
+                        .fillMaxWidth()
+                        .weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                AlbumArtImage(
+                    uri = currentSong.albumArtUri,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(MaterialTheme.shapes.large)
+                            .then(albumArtDragModifier)
+                            .testTag(UiTestTags.PlayerAlbumArt),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = currentSong.title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-            Column(
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = currentSong.title,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
+                    text = currentSong.artist,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier =
+                        Modifier
+                            .testTag(UiTestTags.PlayerArtistLink)
+                            .clickable { onOpenArtist(currentSong.artist) },
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = currentSong.artist,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier =
-                            Modifier
-                                .testTag(UiTestTags.PlayerArtistLink)
-                                .clickable { onOpenArtist(currentSong.artist) },
-                    )
-                    Text(
-                        text = "•",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = currentSong.album,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier =
-                            Modifier
-                                .weight(1f, fill = false)
-                                .testTag(UiTestTags.PlayerAlbumLink)
-                                .clickable { onOpenAlbum(currentSong.album, currentSong.artist) },
-                    )
-                }
+                Text(
+                    text = "•",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = currentSong.album,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier =
+                        Modifier
+                            .weight(1f, fill = false)
+                            .testTag(UiTestTags.PlayerAlbumLink)
+                            .clickable { onOpenAlbum(currentSong.album, currentSong.artist) },
+                )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             // Cache the float-coerced duration so the Slider's valueRange object is only
             // re-allocated when durationMs actually changes — without this remember,
             // every recomposition (twice per second under the position ticker) builds a
@@ -297,65 +318,122 @@ internal fun PlayerRoute(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(formatDuration(sliderPosition.toLong()))
-                Text(formatDuration(state.durationMs))
+                Text(
+                    text = formatDuration(sliderPosition.toLong()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = formatDuration(state.durationMs),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Button(
-                    onClick = playerViewModel::skipToPrevious,
-                    modifier = Modifier.testTag(UiTestTags.PlayerPrevious),
-                ) {
-                    Text("Prev")
-                }
-                Button(
-                    modifier = Modifier.testTag(UiTestTags.PlayerPlayPause),
-                    onClick = playerViewModel::togglePlayPause,
-                ) {
-                    Text(if (state.isPlaying) "Pause" else "Play")
-                }
-                Button(
-                    onClick = playerViewModel::skipToNext,
-                    modifier = Modifier.testTag(UiTestTags.PlayerNext),
-                ) {
-                    Text("Next")
-                }
-            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             val shuffleOn by playerViewModel.shuffleEnabled.collectAsStateWithLifecycle()
+            // Main transport row: shuffle, prev, big play/pause, next, repeat. Shuffle and
+            // repeat tint primary when active, surface-variant when not — the highlight is
+            // the only signal of state, so it has to read at a glance.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(
+                IconButton(
                     onClick = playerViewModel::toggleShuffle,
                     modifier = Modifier.testTag(UiTestTags.PlayerShuffle),
                 ) {
-                    Text(if (shuffleOn) "Shuffle: On" else "Shuffle: Off")
+                    Icon(
+                        Icons.Default.Shuffle,
+                        contentDescription = if (shuffleOn) "Shuffle on" else "Shuffle off",
+                        tint =
+                            if (shuffleOn) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                    )
                 }
-                TextButton(
+                IconButton(
+                    onClick = playerViewModel::skipToPrevious,
+                    modifier = Modifier.testTag(UiTestTags.PlayerPrevious),
+                ) {
+                    Icon(
+                        Icons.Default.SkipPrevious,
+                        contentDescription = "Previous",
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+                FilledIconButton(
+                    onClick = playerViewModel::togglePlayPause,
+                    modifier =
+                        Modifier
+                            .size(72.dp)
+                            .testTag(UiTestTags.PlayerPlayPause),
+                    colors =
+                        IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                ) {
+                    Icon(
+                        if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+                IconButton(
+                    onClick = playerViewModel::skipToNext,
+                    modifier = Modifier.testTag(UiTestTags.PlayerNext),
+                ) {
+                    Icon(
+                        Icons.Default.SkipNext,
+                        contentDescription = "Next",
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+                // Repeat icon: greyed when off, primary when one or all. Uses RepeatOne for
+                // single-track repeat (the "1" badge embedded in the icon makes the mode
+                // glanceable without a label).
+                val repeatIcon =
+                    if (state.repeatMode == 1) Icons.Default.RepeatOne else Icons.Default.Repeat
+                val repeatActive = state.repeatMode != 0
+                IconButton(
                     onClick = playerViewModel::cycleRepeatMode,
                     modifier = Modifier.testTag(UiTestTags.PlayerRepeat),
                 ) {
-                    Text("Repeat: ${repeatModeLabel(state.repeatMode)}")
+                    Icon(
+                        repeatIcon,
+                        contentDescription = "Repeat",
+                        tint =
+                            if (repeatActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                    )
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Secondary row: queue access only. Right-aligned so it doesn't compete with
+            // the transport row visually. "Clear Up Next" lives on the queue screen now —
+            // not a daily action, so a button on the player was overkill.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
             ) {
-                if (state.upcoming.isNotEmpty()) {
-                    TextButton(onClick = playerViewModel::clearUpcoming) {
-                        Text("Clear Up Next")
-                    }
-                }
-                TextButton(
+                IconButton(
                     onClick = onOpenQueue,
                     modifier = Modifier.testTag(UiTestTags.PlayerOpenQueue),
                 ) {
-                    Text("Open Queue")
+                    Icon(
+                        Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = "Open queue",
+                    )
                 }
             }
         }
