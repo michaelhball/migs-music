@@ -70,6 +70,25 @@ class PlaybackManager(
     private val _shuffleEnabled = MutableStateFlow(preferences.shuffleEnabled)
     val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
 
+    private val _crossfadeMs = MutableStateFlow(preferences.crossfadeMs)
+
+    /** Crossfade duration in ms; 0 = disabled. Read by Settings UI for the slider. */
+    val crossfadeMs: StateFlow<Long> = _crossfadeMs.asStateFlow()
+
+    /**
+     * Lazily-built second player used only for the fade-out audio during a crossfade.
+     * Built on first crossfade and kept alive thereafter (rebuilding per crossfade burns
+     * AudioTrack init time). Audio focus is intentionally NOT handled by this player —
+     * the main player owns focus, and dual focus management would fight itself.
+     */
+    private var crossfadePlayer: ExoPlayer? = null
+
+    /**
+     * In-flight crossfade. Kept as a Job so user actions (skip, pause, queue change,
+     * disabling crossfade entirely) can cancel it cleanly via [cancelCrossfade].
+     */
+    private var crossfadeJob: kotlinx.coroutines.Job? = null
+
     private val _currentSongId = MutableStateFlow<Long?>(null)
     override val currentSongId: StateFlow<Long?> = _currentSongId.asStateFlow()
 
@@ -235,6 +254,22 @@ class PlaybackManager(
                 if (tick % PERSIST_EVERY_N_TICKS == 0) {
                     persistSnapshot()
                 }
+
+                // Crossfade trigger: fire when remaining playback time crosses below the
+                // user's configured fade duration. Guarded so the same trigger can't fire
+                // twice for one transition, and so that ultra-short tracks (where the
+                // fade window would eat the entire song) opt out automatically.
+                val crossfadeWindow = _crossfadeMs.value
+                if (
+                    crossfadeWindow > 0L &&
+                    crossfadeJob?.isActive != true &&
+                    duration > crossfadeWindow * 2 &&
+                    duration - pos in 1..crossfadeWindow &&
+                    player.hasNextMediaItem() &&
+                    player.repeatMode == Player.REPEAT_MODE_OFF
+                ) {
+                    crossfadeJob = scope.launch { runCrossfade(crossfadeWindow) }
+                }
             }
         }
     }
@@ -358,6 +393,7 @@ class PlaybackManager(
      */
     override fun stopAndClearQueue() {
         scope.launch {
+            cancelCrossfade()
             withContext(Dispatchers.Main.immediate) {
                 player.pause()
                 player.clearMediaItems()
@@ -397,12 +433,14 @@ class PlaybackManager(
         val queueState = queueEngine.currentState() ?: return
         val index = queueState.effectiveQueue.indexOfFirst { it.entryId == entryId }
         if (index == -1) return
+        cancelCrossfade()
         player.seekTo(index, 0L)
         player.playWhenReady = true
     }
 
     fun togglePlayPause() {
         if (player.isPlaying) {
+            cancelCrossfade()
             player.pause()
         } else {
             player.play()
@@ -410,12 +448,14 @@ class PlaybackManager(
     }
 
     fun skipToNext() {
+        cancelCrossfade()
         if (player.hasNextMediaItem()) {
             player.seekToNextMediaItem()
         }
     }
 
     fun skipToPrevious() {
+        cancelCrossfade()
         if (player.currentPosition > SKIP_PREV_REWIND_THRESHOLD_MS) {
             player.seekTo(0L)
         } else if (player.hasPreviousMediaItem()) {
@@ -424,6 +464,9 @@ class PlaybackManager(
     }
 
     fun seekTo(positionMs: Long) {
+        // Mid-track seek crosses or skips the fade window — abort any in-flight crossfade
+        // so a user-triggered seek doesn't leave the volume stuck at a partial level.
+        cancelCrossfade()
         player.seekTo(positionMs)
     }
 
@@ -528,11 +571,95 @@ class PlaybackManager(
         }
     }
 
+    fun setCrossfadeMs(ms: Long) {
+        val clamped = ms.coerceIn(0L, 12_000L)
+        preferences.crossfadeMs = clamped
+        _crossfadeMs.value = clamped
+        if (clamped == 0L) cancelCrossfade()
+    }
+
+    /**
+     * Aborts any in-flight crossfade and returns the main player to full volume.
+     * Idempotent — safe to call when nothing is happening. Called by every action that
+     * either bypasses the natural track end (skip, jumpToEntry, queue rebuild via
+     * playContext) or pauses the listening session (togglePlayPause → pause).
+     */
+    private fun cancelCrossfade() {
+        crossfadeJob?.cancel()
+        crossfadeJob = null
+        crossfadePlayer?.let { p ->
+            p.stop()
+            p.clearMediaItems()
+        }
+        player.volume = 1f
+    }
+
+    private fun getOrBuildCrossfadePlayer(): ExoPlayer =
+        crossfadePlayer ?: ExoPlayer.Builder(applicationContext)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                // handleAudioFocus =
+                false,
+            )
+            .build()
+            .also { crossfadePlayer = it }
+
+    /**
+     * Plays the outgoing track on a secondary player at decreasing volume while
+     * advancing the main player to the next track at increasing volume — for
+     * `crossfadeMs` total. The main player owns the MediaSession + UI state, so the
+     * lock-screen / mini-player switch to the new track at the moment of advance;
+     * the user's ear hears the fade.
+     *
+     * Cancellation: if the Job is cancelled mid-fade, the finally block stops the
+     * outgoing player and restores main volume to 1 — this is the common path for
+     * "user hit skip during a fade".
+     */
+    private suspend fun runCrossfade(crossfadeMs: Long) {
+        val outgoingItem = player.currentMediaItem ?: return
+        val outgoingPosition = player.currentPosition.coerceAtLeast(0L)
+        val outgoingPlayer = getOrBuildCrossfadePlayer()
+        try {
+            withContext(Dispatchers.Main.immediate) {
+                outgoingPlayer.setMediaItem(outgoingItem)
+                outgoingPlayer.prepare()
+                outgoingPlayer.seekTo(outgoingPosition)
+                outgoingPlayer.volume = 1f
+                outgoingPlayer.play()
+                player.volume = 0f
+                player.seekToNextMediaItem()
+            }
+            val steps = STEPS_PER_CROSSFADE
+            val stepDelay = (crossfadeMs / steps).coerceAtLeast(MIN_STEP_DELAY_MS)
+            for (i in 1..steps) {
+                delay(stepDelay)
+                val progress = i.toFloat() / steps
+                withContext(Dispatchers.Main.immediate) {
+                    outgoingPlayer.volume = (1f - progress).coerceAtLeast(0f)
+                    player.volume = progress.coerceAtMost(1f)
+                }
+            }
+        } finally {
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main.immediate) {
+                outgoingPlayer.stop()
+                outgoingPlayer.clearMediaItems()
+                player.volume = 1f
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "PlaybackManager"
 
         /** How often the live position flow ticks while playing. */
         const val POSITION_TICK_MS = 500L
+
+        /** Crossfade animation: 30 steps over the fade window = ~33ms apart at 1s. */
+        const val STEPS_PER_CROSSFADE = 30
+        const val MIN_STEP_DELAY_MS = 16L
 
         /** Persist snapshot every N position ticks (≈ once per 10s of playback). */
         const val PERSIST_EVERY_N_TICKS = 20

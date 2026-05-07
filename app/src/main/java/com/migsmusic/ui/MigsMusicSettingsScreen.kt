@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -107,6 +108,36 @@ internal fun SettingsRoute(
             Switch(
                 checked = confirmQueueJump,
                 onCheckedChange = { playerViewModel.setConfirmQueueJump(it) },
+            )
+        }
+
+        // Crossfade is a slider, not a switch — the value matters, not just on/off.
+        // Local state mirrors the pref so the slider stays smooth while the user drags;
+        // we commit on drag-end so SharedPreferences isn't hit on every pixel.
+        val crossfadeMs by playerViewModel.crossfadeMs.collectAsState()
+        var crossfadeDraft by remember(crossfadeMs) { mutableStateOf(crossfadeMs.toFloat()) }
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(text = "Crossfade", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text =
+                    when (val ms = crossfadeDraft.toLong()) {
+                        0L -> "Off — tracks transition without overlap (still gapless)."
+                        else -> "${ms / 1000}s — outgoing track fades while the next fades in."
+                    },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Slider(
+                value = crossfadeDraft,
+                onValueChange = { crossfadeDraft = it },
+                onValueChangeFinished = {
+                    // Snap to the nearest second so the displayed value matches the stored
+                    // one, and so toggling between integer values via the slider is reliable.
+                    val snapped = (crossfadeDraft / 1000f).toLong() * 1000L
+                    playerViewModel.setCrossfadeMs(snapped)
+                },
+                valueRange = 0f..12_000f,
+                steps = 11,
             )
         }
 

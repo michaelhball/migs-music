@@ -70,6 +70,16 @@ class AppPreferences(context: Context) {
         set(value) = prefs.edit { putBoolean(KEY_CONFIRM_QUEUE_JUMP, value) }
 
     /**
+     * Crossfade duration in milliseconds. 0 = disabled (track-to-track is gapless via
+     * ExoPlayer but with no overlap). Capped at 12s — anything longer feels weird with
+     * average song lengths and gives ExoPlayer too small a non-fade window to deliver
+     * an actual playable middle of the track.
+     */
+    var crossfadeMs: Long
+        get() = prefs.getLong(KEY_CROSSFADE_MS, 0L).coerceIn(0L, 12_000L)
+        set(value) = prefs.edit { putLong(KEY_CROSSFADE_MS, value.coerceIn(0L, 12_000L)) }
+
+    /**
      * Whether the user was on the full-screen player route the last time we observed nav state.
      * On cold start, if true, we route the user back to the player so they don't have to drill
      * back in. Updated whenever the current route changes.
@@ -98,6 +108,7 @@ class AppPreferences(context: Context) {
         const val KEY_PLAYLIST_SORT = "playlist_sort_order"
         const val KEY_SHUFFLE = "shuffle_enabled"
         const val KEY_CONFIRM_QUEUE_JUMP = "confirm_queue_jump"
+        const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_PLAYER_ROUTE = "was_on_player_route"
         const val KEY_DISCOVERED_M3U_CACHE = "discovered_m3u_cache_tsv"
     }

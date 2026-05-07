@@ -15,6 +15,7 @@ class PlayerViewModel(
     val playbackUiState: StateFlow<PlaybackUiState> = playbackManager.uiState
     val currentPositionMs: StateFlow<Long> = playbackManager.currentPositionMs
     val shuffleEnabled: StateFlow<Boolean> = playbackManager.shuffleEnabled
+    val crossfadeMs: StateFlow<Long> = playbackManager.crossfadeMs
 
     private val _confirmQueueJump = MutableStateFlow(preferences.confirmQueueJump)
     val confirmQueueJump: StateFlow<Boolean> = _confirmQueueJump.asStateFlow()
@@ -23,6 +24,8 @@ class PlayerViewModel(
         preferences.confirmQueueJump = value
         _confirmQueueJump.value = value
     }
+
+    fun setCrossfadeMs(ms: Long) = playbackManager.setCrossfadeMs(ms)
 
     /** Convenience flow exposing just the currently-playing song id (or null). */
     val currentSongId: StateFlow<Long?> = playbackManager.currentSongId
