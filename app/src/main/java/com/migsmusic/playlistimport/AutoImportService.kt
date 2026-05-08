@@ -72,8 +72,17 @@ class AutoImportService(
         // so without this step `observeAllSongs().first()` may return a stale view that's
         // missing the just-pushed tracks (LibrarySyncObserver's debounced auto-rescan hasn't
         // fired yet, and the deprecated MEDIA_SCANNER_SCAN_FILE broadcast no-ops on Android 11+).
-        runCatching { libraryRepository.scanDevice() }
-            .onFailure { Log.w(TAG, "pre-import scanDevice failed", it) }
+        //
+        // Skip the rescan when the sync-stats sidecar (written by the Mac script) reports
+        // audioPushed=0. On no-op resyncs (m3u-only changes — reorder, song removal,
+        // contents-already-on-phone) we don't need to touch MediaStore at all. ~3-4s saved
+        // on a 2000-song library; a meaningful chunk of the perceived sync time.
+        val stats = readSyncStats()
+        val needsRescan = stats?.audioPushed != 0
+        if (needsRescan) {
+            runCatching { libraryRepository.scanDevice() }
+                .onFailure { Log.w(TAG, "pre-import scanDevice failed", it) }
+        }
 
         // Read the sync manifest BEFORE per-file imports so we can honor the deleteOrphans
         // flag during each per-playlist replace — when an existing synced playlist's
@@ -119,6 +128,32 @@ class AutoImportService(
         val keepNames: Set<String>,
         val deleteOrphans: Boolean,
     )
+
+    private data class SyncStats(val audioPushed: Int)
+
+    /**
+     * Reads `<sync dir>/.migs-sync-stats` (key=value lines) if present. Pushed by the Mac
+     * sync script after the tar-stream completes; tells us whether any audio files were
+     * actually new this round so we can skip the MediaStore rescan on no-op resyncs.
+     * Returns null if absent or unreadable — callers treat that as "unknown, scan to be safe".
+     * Deletes the file on read (it's per-sync, not durable state).
+     */
+    private suspend fun readSyncStats(): SyncStats? {
+        val file = File(SYNC_DIR_PATH, ".migs-sync-stats")
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                if (!file.exists()) return@runCatching null
+                val text = file.readText()
+                file.delete()
+                var audioPushed: Int? = null
+                for (line in text.lineSequence()) {
+                    val (k, v) = line.split("=", limit = 2).let { it.getOrNull(0)?.trim() to it.getOrNull(1)?.trim() }
+                    if (k == "audioPushed") audioPushed = v?.toIntOrNull()
+                }
+                audioPushed?.let { SyncStats(audioPushed = it) }
+            }.getOrNull()
+        }
+    }
 
     /**
      * Reads `<sync dir>/.migs-sync-manifest` if present. Returns null if absent.
