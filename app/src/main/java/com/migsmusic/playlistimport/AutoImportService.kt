@@ -7,6 +7,7 @@ import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -48,7 +49,22 @@ class AutoImportService(
     private val playbackController: PlaybackController,
     private val orphanAudioTracker: OrphanAudioTracker,
 ) {
-    suspend fun importAll(): ImportSummary {
+    /**
+     * Serializes calls to [importAll]. Two callers can race: the AUTO_IMPORT
+     * BroadcastReceiver fired by the Mac sync, and PlaylistsViewModel's
+     * `refreshAvailableM3uFiles` that runs whenever the user opens the Playlists tab.
+     * Without this mutex they can both see the same unprocessed `.m3u` file and run
+     * the per-song-orphan diff with stale state — observed as false-positive orphan
+     * entries on a fresh-install sync.
+     */
+    private val importMutex = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun importAll(): ImportSummary =
+        importMutex.withLock {
+            importAllLocked()
+        }
+
+    private suspend fun importAllLocked(): ImportSummary {
         val files = scanForM3uFiles()
         Log.i(TAG, "importAll: ${files.size} m3u file(s) found in $SYNC_DIR_PATH")
         // Force a fresh MediaStore → Room scan before reading the library snapshot. The Mac
