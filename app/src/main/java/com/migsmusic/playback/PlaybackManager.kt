@@ -179,8 +179,16 @@ class PlaybackManager(
                     // media integration. Idempotent: starting an already-running foreground
                     // service is a no-op.
                     if (isPlaying) ensureServiceStarted()
+                    Log.i(TAG, "onIsPlayingChanged=$isPlaying playWhenReady=${player.playWhenReady} state=${player.playbackState}")
                     persistSnapshot()
                     scope.launch { publishUiState() }
+                }
+
+                override fun onPlayWhenReadyChanged(
+                    playWhenReady: Boolean,
+                    reason: Int,
+                ) {
+                    Log.i(TAG, "onPlayWhenReadyChanged=$playWhenReady reason=$reason")
                 }
 
                 override fun onRepeatModeChanged(repeatMode: Int) {
@@ -742,6 +750,10 @@ class PlaybackManager(
 
     private suspend fun restoreLastSession() {
         val restored = sessionRepository.load() ?: return
+        Log.i(
+            TAG,
+            "restoreLastSession: snapshot isPlaying=${restored.isPlaying} pos=${restored.currentPositionMs} queueSize=${restored.queueState.effectiveQueue.size}",
+        )
         // Sanitize against the live song table BEFORE seeding queueEngine, so a brief window
         // never exposes stale (deleted) songIds via currentState(). Symmetric with syncPlayer.
         val songsById = loadSongsById(restored.queueState.effectiveQueue.map { it.songId })
@@ -757,6 +769,10 @@ class PlaybackManager(
             startPositionMs = restored.currentPositionMs,
             playWhenReady = false,
         )
+        // Belt-and-suspenders: explicitly pause too. syncPlayer already sets playWhenReady=false,
+        // but on some devices a second call to player.pause() blocks any subsequent stray play
+        // command (e.g. system-side resume request) until the user explicitly taps play.
+        withContext(Dispatchers.Main.immediate) { player.pause() }
     }
 
     private suspend fun syncPlayer(
