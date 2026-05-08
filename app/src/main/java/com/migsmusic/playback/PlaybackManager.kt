@@ -33,7 +33,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 class PlaybackManager(
     context: Context,
@@ -623,15 +626,32 @@ class PlaybackManager(
         val outgoingPosition = player.currentPosition.coerceAtLeast(0L)
         val outgoingPlayer = getOrBuildCrossfadePlayer()
         try {
+            // Stage 1: load the outgoing track on the secondary player while it's still
+            // muted. We don't flip the main player or start any volume animation yet —
+            // doing so before the secondary player is decoded leaves a brief silent
+            // window (main is muted-and-advanced; secondary is buffering) that's
+            // perceived as a gap at the very start of the crossfade.
             withContext(Dispatchers.Main.immediate) {
+                outgoingPlayer.volume = 0f
                 outgoingPlayer.setMediaItem(outgoingItem)
                 outgoingPlayer.prepare()
                 outgoingPlayer.seekTo(outgoingPosition)
+                outgoingPlayer.playWhenReady = true
+            }
+
+            // Stage 2: wait for the secondary player to actually be ready to emit audio.
+            // Local file playback typically resolves in <50ms; the timeout is a safety
+            // net so a stuck player can't hang the crossfade indefinitely.
+            awaitPlayerReady(outgoingPlayer, timeoutMs = CROSSFADE_READY_TIMEOUT_MS)
+
+            // Stage 3: cross over. Both players are now producing audio (one muted, one
+            // at full); the volume animation drives the actual fade.
+            withContext(Dispatchers.Main.immediate) {
                 outgoingPlayer.volume = 1f
-                outgoingPlayer.play()
                 player.volume = 0f
                 player.seekToNextMediaItem()
             }
+
             val steps = STEPS_PER_CROSSFADE
             val stepDelay = (crossfadeMs / steps).coerceAtLeast(MIN_STEP_DELAY_MS)
             for (i in 1..steps) {
@@ -651,6 +671,38 @@ class PlaybackManager(
         }
     }
 
+    /**
+     * Suspends until [p] reaches Player.STATE_READY or the timeout elapses. Returns
+     * true if it became ready, false on timeout. Detaches its listener on every exit
+     * path including cancellation, so a cancelled crossfade never leaks a Listener.
+     */
+    private suspend fun awaitPlayerReady(
+        p: ExoPlayer,
+        timeoutMs: Long,
+    ): Boolean {
+        if (p.playbackState == Player.STATE_READY) return true
+        return withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                val listener =
+                    object : Player.Listener {
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == Player.STATE_READY) {
+                                p.removeListener(this)
+                                if (cont.isActive) cont.resume(Unit)
+                            }
+                        }
+                    }
+                p.addListener(listener)
+                cont.invokeOnCancellation { p.removeListener(listener) }
+                // Edge case: state flipped to READY between the check above and addListener.
+                if (p.playbackState == Player.STATE_READY) {
+                    p.removeListener(listener)
+                    if (cont.isActive) cont.resume(Unit)
+                }
+            }
+        } != null
+    }
+
     private companion object {
         const val TAG = "PlaybackManager"
 
@@ -660,6 +712,13 @@ class PlaybackManager(
         /** Crossfade animation: 30 steps over the fade window = ~33ms apart at 1s. */
         const val STEPS_PER_CROSSFADE = 30
         const val MIN_STEP_DELAY_MS = 16L
+
+        /**
+         * Cap on how long we wait for the secondary player to reach STATE_READY before
+         * starting the cross-over. Local file playback is normally <50ms; this timeout
+         * is the worst-case fallback so a stuck player can't hang the crossfade.
+         */
+        const val CROSSFADE_READY_TIMEOUT_MS = 1_500L
 
         /** Persist snapshot every N position ticks (≈ once per 10s of playback). */
         const val PERSIST_EVERY_N_TICKS = 20
@@ -873,23 +932,49 @@ class PlaybackManager(
             .build()
 
     /**
-     * Loads album-art bytes via our own ContentResolver. Used to inject art into the
-     * platform notification metadata when the OEM bitmap loader can't reach our URIs.
-     * Called lazily for the current song only — loading bytes for the entire queue
-     * would block syncPlayer for tens of seconds when the queue is large.
+     * Loads album-art bytes for a song. Tries two paths in order:
+     *
+     * 1. The MediaStore album-art URI (`song.albumArtUri`), which is the cheap path —
+     *    a single content-resolver call. Works when the device's MediaScanner has
+     *    extracted album art into MediaStore.Audio.Albums. Returns null on devices
+     *    where the OEM provider doesn't expose those bytes (observed on OnePlus).
+     *
+     * 2. `MediaMetadataRetriever.embeddedPicture` against the audio file itself.
+     *    Slower (decodes the file's headers) but reliable: as long as the song has
+     *    embedded ID3v2/MP4/Vorbis cover art, we get it back as raw bytes.
+     *
+     * Either way, the bytes come back as raw JPEG/PNG/etc. — exactly what
+     * `MediaMetadata.setArtworkData` expects.
      */
-    private suspend fun loadArtworkBytes(uri: String): ByteArray? =
+    private suspend fun loadArtworkBytes(song: SongEntity): ByteArray? =
         withContext(Dispatchers.IO) {
+            // Path 1: MediaStore album URI (fast).
+            song.albumArtUri?.let { uri ->
+                runCatching {
+                    applicationContext.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+                }.getOrNull()
+            }?.let { return@withContext it }
+
+            // Path 2: read embedded picture from the audio file. MediaMetadataRetriever
+            // can take a content URI directly; the platform handles the read.
             runCatching {
-                applicationContext.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+                val mmr = android.media.MediaMetadataRetriever()
+                try {
+                    mmr.setDataSource(applicationContext, song.contentUri.toUri())
+                    mmr.embeddedPicture
+                } finally {
+                    mmr.release()
+                }
             }.getOrNull()
         }
 
     /**
      * Loads the album art for whatever song is currently playing and replaces the
-     * live MediaItem's metadata with the embedded bytes. The OEM lockscreen / notification
-     * surface reads bytes directly via the MediaSession instead of opening our content URI,
-     * which on this OnePlus device fails with "artworkBitmap is null".
+     * live MediaItem's metadata with the embedded bytes. The system lockscreen /
+     * notification / Quick Settings media controls all read bytes directly via the
+     * MediaSession's metadata; setArtworkData is what makes them show art, not
+     * setArtworkUri (which the OEM bitmap loader sometimes can't resolve from a
+     * background context).
      */
     private fun embedArtworkForCurrent() {
         scope.launch {
@@ -903,12 +988,13 @@ class PlaybackManager(
                 queueSongCache[currentEntry.songId]
                     ?: libraryRepository.getSongsByIds(listOf(currentEntry.songId)).firstOrNull()
                     ?: return@launch
-            val artUri =
-                song.albumArtUri ?: run {
+            val artBytes =
+                loadArtworkBytes(song) ?: run {
+                    // No art recoverable from any path — mark this entry as resolved so we
+                    // don't keep retrying on every metadata callback.
                     lastArtworkEntryId = currentEntry.entryId
                     return@launch
                 }
-            val artBytes = loadArtworkBytes(artUri) ?: return@launch
 
             withContext(Dispatchers.Main.immediate) {
                 val playerCurrent = player.currentMediaItem ?: return@withContext
