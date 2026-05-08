@@ -155,6 +155,25 @@ internal fun SettingsRoute(
             title = "Source code",
             subtitle = "github.com/michaelhball/migs-music",
         )
+        // Privacy policy link. Tapping opens the hosted page in a browser. Privacy policy
+        // is short and unsurprising — no telemetry, no network — but having a one-tap link
+        // is a hard requirement for distribution channels (Play Store) and a kindness for
+        // anyone curious about what the app does behind the scenes.
+        val privacyContext = LocalContext.current
+        SettingsRow(
+            title = "Privacy policy",
+            subtitle = "What this app does and doesn't do with your data",
+            trailing = {
+                Button(onClick = {
+                    privacyContext.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://michaelhball.github.io/migs-music/privacy.html"),
+                        ),
+                    )
+                }) { Text("Open") }
+            },
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
     }
