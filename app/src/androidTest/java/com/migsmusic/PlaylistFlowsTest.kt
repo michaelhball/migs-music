@@ -131,7 +131,14 @@ class PlaylistFlowsTest {
                 collectTexts(node).any { it == testPlaylistName }
             }
         require(targetIndex >= 0) { "Test playlist row not found for delete" }
-        composeRule.onAllNodesWithTag(UiTestTags.PlaylistDeleteButton)[targetIndex].performClick()
+        // Delete lives inside a DropdownMenu attached to the row's MoreVert button
+        // — open the menu first, then tap the now-visible Delete item. Without
+        // opening the menu the DropdownMenuItem isn't rendered to the semantic tree.
+        composeRule.onAllNodesWithTag(UiTestTags.PlaylistRowMenu)[targetIndex].performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag(UiTestTags.PlaylistDeleteButton).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag(UiTestTags.PlaylistDeleteButton)[0].performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText(testPlaylistName).fetchSemanticsNodes().isEmpty()
         }

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import com.migsmusic.ui.UiTestTags
@@ -101,34 +102,35 @@ class SearchAndPlayerTest {
         composeRule.onNodeWithTag(UiTestTags.MiniPlayer).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.hasNode(UiTestTags.PlayerScreen) }
 
-        // Wait for actual playback to converge (Pause label means playing). Without this
-        // guard, the test is racing with state from the previous test class.
+        // Wait for actual playback to converge ("Pause" content-description means
+        // playing). Player buttons are icons now, not text — the contentDescription
+        // is the only stable way to read the visible state.
         composeRule.waitUntil(timeoutMillis = 20_000) {
-            composeRule.firstTextUnder(UiTestTags.PlayerPlayPause) == "Pause"
+            composeRule.firstContentDescriptionUnder(UiTestTags.PlayerPlayPause) == "Pause"
         }
 
-        // From the known "Pause" (playing) state, tap toggles to "Play" (paused).
+        // From the known playing state, tap toggles to paused.
         composeRule.onNodeWithTag(UiTestTags.PlayerPlayPause).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.firstTextUnder(UiTestTags.PlayerPlayPause) == "Play"
+            composeRule.firstContentDescriptionUnder(UiTestTags.PlayerPlayPause) == "Play"
         }
         // Toggle back so we don't leave audio paused mid-suite.
         composeRule.onNodeWithTag(UiTestTags.PlayerPlayPause).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.firstTextUnder(UiTestTags.PlayerPlayPause) == "Pause"
+            composeRule.firstContentDescriptionUnder(UiTestTags.PlayerPlayPause) == "Pause"
         }
 
-        // Cycle repeat: Off → All → One → Off; just verify label changes twice.
-        val r0 = composeRule.firstTextUnder(UiTestTags.PlayerRepeat)
+        // Cycle repeat: Off → All → One → Off. The icon's contentDescription is
+        // always "Repeat" (we communicate the mode via tint + icon variant), so we
+        // can't compare descriptions across taps. Instead, verify the playback
+        // manager's repeatMode actually advances by reading uiState.
+        val app = ApplicationProvider.getApplicationContext<com.migsmusic.MigsMusicApplication>()
+        val pm = app.appContainer.playbackManager
+        val r0 = pm.uiState.value.repeatMode
         composeRule.onNodeWithTag(UiTestTags.PlayerRepeat).performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.firstTextUnder(UiTestTags.PlayerRepeat) != r0
-        }
-        val r1 = composeRule.firstTextUnder(UiTestTags.PlayerRepeat)
+        composeRule.waitUntil(timeoutMillis = 5_000) { pm.uiState.value.repeatMode != r0 }
+        val r1 = pm.uiState.value.repeatMode
         composeRule.onNodeWithTag(UiTestTags.PlayerRepeat).performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            val now = composeRule.firstTextUnder(UiTestTags.PlayerRepeat)
-            now != null && now != r1
-        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { pm.uiState.value.repeatMode != r1 }
     }
 }

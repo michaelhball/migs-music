@@ -462,7 +462,10 @@ internal fun PlaylistDetailRoute(
                 onSelect = { contentSort = it },
             )
             Box {
-                IconButton(onClick = { headerOverflowOpen = true }) {
+                IconButton(
+                    onClick = { headerOverflowOpen = true },
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailOverflow),
+                ) {
                     Icon(Icons.Default.MoreVert, contentDescription = "More")
                 }
                 DropdownMenu(

@@ -11,6 +11,7 @@ object UiTestTags {
     const val PlayerHeart = "player_heart"
     const val LovesPlaylistRow = "loves_playlist_row"
     const val LovesScreen = "screen_loves"
+    const val PlaylistDetailOverflow = "playlist_detail_overflow"
     const val SongsScreen = "screen_songs"
     const val FoldersScreen = "screen_folders"
     const val FolderDetailScreen = "screen_folder_detail"

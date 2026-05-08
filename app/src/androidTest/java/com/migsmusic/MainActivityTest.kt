@@ -9,7 +9,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
@@ -41,8 +40,10 @@ class MainActivityTest {
 
     @Test
     fun launchesAndShowsCoreUi() {
-        composeRule.onNodeWithText("MIGS Music").assertIsDisplayed()
-
+        // No app-level TopAppBar / "MIGS Music" title anymore — it lived for one
+        // commit and was removed because the system task switcher already shows
+        // the app label. Verify the app actually launches by waiting for either
+        // the library content or the permission gate.
         waitForLibraryOrPermissionGate()
     }
 

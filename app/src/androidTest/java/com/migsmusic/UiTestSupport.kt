@@ -68,6 +68,25 @@ internal fun SemanticsNodeInteractionsProvider.firstTextUnder(tag: String): Stri
     return nodes.firstOrNull()?.let { collectTexts(it).firstOrNull { txt -> txt.isNotBlank() } }
 }
 
+/**
+ * Pulls the first contentDescription found under a tagged node. Used by tests that
+ * assert on icon-only buttons (player transport row): with text labels gone we need
+ * to read the icon's accessibility description instead.
+ */
+internal fun SemanticsNodeInteractionsProvider.firstContentDescriptionUnder(tag: String): String? {
+    val nodes = onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes()
+    val root = nodes.firstOrNull() ?: return null
+    val collected = mutableListOf<String>()
+
+    fun walk(n: androidx.compose.ui.semantics.SemanticsNode) {
+        n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)
+            ?.forEach { collected += it }
+        n.children.forEach(::walk)
+    }
+    walk(root)
+    return collected.firstOrNull { it.isNotBlank() }
+}
+
 internal fun <A : androidx.activity.ComponentActivity> AndroidComposeTestRule<ActivityScenarioRule<A>, A>.waitForLibraryReady(
     timeoutMillis: Long = 30_000L,
 ) {

@@ -116,6 +116,12 @@ class NewUiBatchTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRow).fetchSemanticsNodes().size == 3
         }
+        // Restore Order lives in the header overflow DropdownMenu — open it first
+        // so the menu item gets rendered into the semantic tree.
+        composeRule.onNodeWithTag(UiTestTags.PlaylistDetailOverflow).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.hasNode(UiTestTags.PlaylistDetailRestoreOrder)
+        }
         composeRule.onNodeWithTag(UiTestTags.PlaylistDetailRestoreOrder).performClick()
 
         // Wait for the restore to propagate via Room → Flow → recompose.
