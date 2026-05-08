@@ -561,7 +561,7 @@ private fun LovesPlaylistRow(
     onOpen: () -> Unit,
 ) {
     ListRow(
-        title = "Loves",
+        title = "loves",
         subtitle =
             when (count) {
                 0 -> "Tap a heart on the player to add songs"

@@ -435,7 +435,7 @@ internal fun PlayerRoute(
                 ) {
                     Icon(
                         if (isLoved) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = if (isLoved) "Remove from Loves" else "Add to Loves",
+                        contentDescription = if (isLoved) "Remove from loves" else "Add to loves",
                         tint =
                             if (isLoved) {
                                 MaterialTheme.colorScheme.primary

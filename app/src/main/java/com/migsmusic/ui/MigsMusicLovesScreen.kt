@@ -63,7 +63,7 @@ internal fun LovesRoute(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Loves",
+                text = "loves",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
             )
