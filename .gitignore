@@ -47,6 +47,8 @@ CLAUDE.local.md
 # Workspace logs (smoke runs, baseline) — actual notes are kept; raw logs aren't.
 workspace/baseline.log
 workspace/smoke-run-*.log
+# Workspace backup notes — contain references to where private files live on disk.
+workspace/KEYSTORE_BACKUPS.md
 
 # Test reports
 app/test-results/
