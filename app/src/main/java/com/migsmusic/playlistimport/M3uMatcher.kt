@@ -14,25 +14,52 @@ data class MatchedSong(val entry: M3uEntry, val song: SongEntity)
  * Pre-computed library indices used by [matchM3uEntries]. Build once per batch import
  * (e.g. once for a Mac sync that lands several .m3u files at once) so we don't pay the
  * O(N) library indexing cost per file.
+ *
+ * Eagerly builds the cheap maps (lowercase artist+title, absolute path). The two
+ * normalize()-based maps are slow to build — Unicode NFKD over thousands of strings
+ * costs ~1s on a 2000-song library — so they're lazy and only paid for when the
+ * cheap passes miss. For Mac-pushed M3Us where every entry resolves via pass 0 or
+ * pass 1, the normalized maps are never built at all.
  */
-class M3uMatcherIndex(library: List<SongEntity>) {
+class M3uMatcherIndex(private val library: List<SongEntity>) {
+    // Pass 0 lookup. MediaStore stores paths as `/storage/emulated/0/...` while Mac-pushed
+    // M3Us write `/sdcard/...` — same logical path on Android (sdcard is a symlink) but
+    // not string-equal. We index BOTH forms so pass 0 hits in either direction without
+    // having to allocate/normalize per lookup. At most one extra map entry per song.
+    val byAbsolutePath: Map<String, SongEntity> =
+        buildMap {
+            for (s in library) {
+                val p = s.absolutePath
+                if (p.isEmpty()) continue
+                put(p, s)
+                if (p.startsWith(STORAGE_EMULATED_ROOT)) {
+                    put("/sdcard/" + p.removePrefix(STORAGE_EMULATED_ROOT), s)
+                } else if (p.startsWith("/sdcard/")) {
+                    put(STORAGE_EMULATED_ROOT + p.removePrefix("/sdcard/"), s)
+                }
+            }
+        }
+
     val byArtistTitle: Map<Pair<String, String>, SongEntity> =
         library.associateBy(
             keySelector = { it.artist.lowercase().trim() to it.title.lowercase().trim() },
             valueTransform = { it },
         )
-    val byNormalizedArtistTitle: Map<Pair<String, String>, SongEntity> =
+
+    val byNormalizedArtistTitle: Map<Pair<String, String>, SongEntity> by lazy {
         library.associateBy(
             keySelector = { normalize(it.artist) to normalize(it.title) },
             valueTransform = { it },
         )
+    }
 
     // Title-only normalized index, with deterministic disambiguation (alphabetical artist).
-    val byNormalizedTitle: Map<String, SongEntity> =
+    val byNormalizedTitle: Map<String, SongEntity> by lazy {
         library
             .sortedBy { it.artist.lowercase() }
             .groupBy { normalize(it.title) }
             .mapValues { it.value.first() }
+    }
 }
 
 fun matchM3uEntries(
@@ -62,7 +89,7 @@ fun matchM3uEntries(
     val unmatched = mutableListOf<M3uEntry>()
 
     for (entry in entries) {
-        val hit = matchOne(entry, index.byArtistTitle, index.byNormalizedArtistTitle, index.byNormalizedTitle)
+        val hit = matchOne(entry, index)
         if (hit != null) matched += MatchedSong(entry, hit) else unmatched += entry
     }
 
@@ -71,30 +98,40 @@ fun matchM3uEntries(
 
 private fun matchOne(
     entry: M3uEntry,
-    byArtistTitle: Map<Pair<String, String>, SongEntity>,
-    byNormalizedArtistTitle: Map<Pair<String, String>, SongEntity>,
-    byNormalizedTitle: Map<String, SongEntity>,
+    index: M3uMatcherIndex,
 ): SongEntity? {
     val artist = entry.artist?.trim()
     val title = entry.title?.trim()
 
+    // Pass 0: exact absolutePath match. Mac-pushed M3Us already contain the on-phone
+    // path of each track, so this hits ~100% of the time on a clean library and skips
+    // the slower passes entirely. Cheap (single map lookup) and tried first.
+    if (entry.rawPath.isNotEmpty()) {
+        index.byAbsolutePath[entry.rawPath]?.let { return it }
+    }
+
     if (!artist.isNullOrEmpty() && !title.isNullOrEmpty()) {
-        // Pass 1: exact case-insensitive (artist, title).
-        byArtistTitle[artist.lowercase() to title.lowercase()]?.let { return it }
-        // Pass 2: normalized (artist, title).
-        byNormalizedArtistTitle[normalize(artist) to normalize(title)]?.let { return it }
+        // Pass 1: exact case-insensitive (artist, title). Eager map, single lookup.
+        // Catches files that were moved on disk after sync (path differs but metadata
+        // matches).
+        index.byArtistTitle[artist.lowercase() to title.lowercase()]?.let { return it }
+        // Pass 2: normalized (artist, title) — triggers building the lazy normalized
+        // index on first miss in this batch. When every entry hits pass 0 or 1 (the
+        // common case), the normalized index is never built and we save ~1s on a
+        // 2000-song library.
+        index.byNormalizedArtistTitle[normalize(artist) to normalize(title)]?.let { return it }
     }
 
     // Pass 3: basename fallback — useful when EXTINF is missing entirely. Derive a likely
     // title from the filename (strip extension and disambiguating prefixes like "01 -").
     val basename = basenameTitle(entry.rawPath)
     if (basename.isNotEmpty()) {
-        byNormalizedTitle[normalize(basename)]?.let { return it }
+        index.byNormalizedTitle[normalize(basename)]?.let { return it }
     }
 
     // If we have a title but no artist (rare — old plain M3U), match title-only.
     if (!title.isNullOrEmpty()) {
-        byNormalizedTitle[normalize(title)]?.let { return it }
+        index.byNormalizedTitle[normalize(title)]?.let { return it }
     }
 
     return null
@@ -140,3 +177,5 @@ private val COMBINING_MARKS = Regex("""\p{InCombiningDiacriticalMarks}+""")
 
 // Leading "01 - ", "01. ", "01 " — common in iTunes filename exports.
 private val TRACK_NUMBER_PREFIX = Regex("""^\d{1,3}[\s.\-]+""")
+
+private const val STORAGE_EMULATED_ROOT = "/storage/emulated/0/"
