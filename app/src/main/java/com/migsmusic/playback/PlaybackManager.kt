@@ -651,14 +651,23 @@ class PlaybackManager(
             // Local file playback typically resolves in <50ms; the timeout is a safety
             // net so a stuck player can't hang the crossfade indefinitely.
             awaitPlayerReady(outgoingPlayer, timeoutMs = CROSSFADE_READY_TIMEOUT_MS)
+            // STATE_READY only means buffered+decoded; the audio renderer takes another
+            // ~50ms to push the first samples to the speaker. Without this delay, the
+            // first sliver of the fade has the secondary "playing" but no audio out yet.
+            delay(AUDIO_HANDOFF_DELAY_MS)
 
-            // Stage 3: cross over. Both players are now producing audio (one muted, one
-            // at full); the volume animation drives the actual fade.
+            // Stage 3: cross over. Secondary is now actually emitting; flip its volume
+            // up, mute the main player, advance main to the next track in its queue.
             withContext(Dispatchers.Main.immediate) {
                 outgoingPlayer.volume = 1f
                 player.volume = 0f
                 player.seekToNextMediaItem()
             }
+            // Main player's audio renderer flushes the previous track and starts decoding
+            // the next one — same warmup window. Without this delay, the early animation
+            // steps drive secondary↓ + main(silent), which is what the user heard as a
+            // "tiny silent moment as it switches songs".
+            delay(AUDIO_HANDOFF_DELAY_MS)
 
             val steps = STEPS_PER_CROSSFADE
             val stepDelay = (crossfadeMs / steps).coerceAtLeast(MIN_STEP_DELAY_MS)
@@ -727,6 +736,14 @@ class PlaybackManager(
          * is the worst-case fallback so a stuck player can't hang the crossfade.
          */
         const val CROSSFADE_READY_TIMEOUT_MS = 1_500L
+
+        /**
+         * Brief pause between "player reports STATE_READY" and "audio output actually
+         * starts". ExoPlayer's STATE_READY means the decoder is ready, but the audio
+         * renderer needs ~50ms to push the first samples to the speaker. Used at both
+         * crossfade hand-off points (secondary becoming audible, main switching tracks).
+         */
+        const val AUDIO_HANDOFF_DELAY_MS = 80L
 
         /** Persist snapshot every N position ticks (≈ once per 10s of playback). */
         const val PERSIST_EVERY_N_TICKS = 20
