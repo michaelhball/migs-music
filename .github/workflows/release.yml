@@ -59,24 +59,31 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
-      - name: Build signed AAB
-        run: ./gradlew --no-daemon :app:bundleRelease
+      - name: Build signed APK + AAB
+        # APK is what most users sideload via the Releases page; AAB is what the
+        # Play Store wants if/when we publish there. Building both means the
+        # release artefact set covers either path without a second workflow run.
+        run: ./gradlew --no-daemon :app:assembleRelease :app:bundleRelease
 
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Attach AAB to GitHub Release
+      - name: Attach APK + AAB to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          APK_PATH=app/build/outputs/apk/release/app-release.apk
           AAB_PATH=app/build/outputs/bundle/release/app-release.aab
-          RENAMED=migs-music-${{ steps.version.outputs.version }}.aab
-          cp "$AAB_PATH" "$RENAMED"
-          if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            gh release upload "v${{ steps.version.outputs.version }}" "$RENAMED" --clobber
+          APK_RENAMED="migs-music-${VERSION}.apk"
+          AAB_RENAMED="migs-music-${VERSION}.aab"
+          cp "$APK_PATH" "$APK_RENAMED"
+          cp "$AAB_PATH" "$AAB_RENAMED"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "$APK_RENAMED" "$AAB_RENAMED" --clobber
           else
-            gh release create "v${{ steps.version.outputs.version }}" "$RENAMED" \
-              --title "v${{ steps.version.outputs.version }}" \
-              --notes "Release v${{ steps.version.outputs.version }}. See commit log for changes."
+            gh release create "v${VERSION}" "$APK_RENAMED" "$AAB_RENAMED" \
+              --title "v${VERSION}" \
+              --notes "Release v${VERSION}. See commit log for changes."
           fi
