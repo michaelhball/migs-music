@@ -5,6 +5,12 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * One song's membership in one playlist. The cross-table key is the song's
+ * `absolutePath` (not its MediaStore _ID), so playlist contents survive when
+ * MediaScanner reassigns _IDs during ID3-tag rescans — see [MIGRATION_6_7] for
+ * background.
+ */
 @Entity(
     tableName = "playlist_songs",
     foreignKeys = [
@@ -16,20 +22,20 @@ import androidx.room.PrimaryKey
         ),
         ForeignKey(
             entity = SongEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["songId"],
+            parentColumns = ["absolutePath"],
+            childColumns = ["songAbsolutePath"],
             onDelete = ForeignKey.CASCADE,
         ),
     ],
     indices = [
         Index("playlistId"),
-        Index("songId"),
+        Index("songAbsolutePath"),
     ],
 )
 data class PlaylistSongEntity(
     @PrimaryKey(autoGenerate = true) val playlistItemId: Long = 0,
     val playlistId: Long,
-    val songId: Long,
+    val songAbsolutePath: String,
     val position: Int,
     val addedAtMillis: Long,
     /**

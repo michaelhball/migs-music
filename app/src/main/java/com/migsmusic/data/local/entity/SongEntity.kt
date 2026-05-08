@@ -1,9 +1,13 @@
 package com.migsmusic.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "songs")
+@Entity(
+    tableName = "songs",
+    indices = [Index(value = ["absolutePath"], unique = true)],
+)
 data class SongEntity(
     @PrimaryKey val id: Long,
     val contentUri: String,
@@ -20,14 +24,14 @@ data class SongEntity(
     val dateAddedSeconds: Long,
     val dateModifiedSeconds: Long,
     /**
-     * Absolute filesystem path (MediaStore.Audio.Media.DATA). Used as the *stable* identity
-     * of the song across MediaStore _ID changes — when MediaScanner re-reads tags it can
-     * reassign a file's _ID, which previously orphaned the song from any playlist that
-     * referenced it. Now [com.migsmusic.data.repository.LibraryRepository.scanDevice]
-     * detects (oldId, newId) for the same absolutePath and remaps `playlist_songs.songId`
-     * before any cleanup, so playlists survive _ID churn.
+     * Absolute filesystem path (MediaStore.Audio.Media.DATA). The *cross-table identity*
+     * for songs: `playlist_songs.songAbsolutePath` and `loved_songs.songAbsolutePath`
+     * FK against this column (see [MIGRATION_6_7]). Stable across MediaStore _ID churn,
+     * which is what makes playlists and hearts survive ID3-tag rescans.
      *
-     * Empty string for rows from before the v5 migration; populated on next scan.
+     * The MediaStore `_ID` still lives in [id] and is used by playback to build content
+     * URIs; UI/playback resolve [id] from absolutePath via JOIN at query time so they
+     * always see the current _ID even right after a rescan.
      */
     val absolutePath: String = "",
 )
