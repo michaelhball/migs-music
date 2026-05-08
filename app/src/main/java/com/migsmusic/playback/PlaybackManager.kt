@@ -619,70 +619,81 @@ class PlaybackManager(
             .also { crossfadePlayer = it }
 
     /**
-     * Plays the outgoing track on a secondary player at decreasing volume while
-     * advancing the main player to the next track at increasing volume — for
-     * `crossfadeMs` total. The main player owns the MediaSession + UI state, so the
-     * lock-screen / mini-player switch to the new track at the moment of advance;
-     * the user's ear hears the fade.
+     * Crossfade approach: keep the main player playing the *current* track naturally
+     * (no track-switch on main during the fade), and use the secondary player for the
+     * incoming track from position 0. This avoids:
      *
-     * Cancellation: if the Job is cancelled mid-fade, the finally block stops the
-     * outgoing player and restores main volume to 1 — this is the common path for
-     * "user hit skip during a fade".
+     * 1. The skip-back artifact from snapshotting main's position for an outgoing
+     *    player, then having that player start emitting ~150ms later — the snapshot
+     *    drift made the user hear ~150ms of A repeated.
+     *
+     * 2. The silent moment from advancing main mid-fade — main's audio renderer
+     *    flushes the previous track on `seekToNextMediaItem`, which is ~50ms of
+     *    silence on the main side that the secondary couldn't fully cover.
+     *
+     * Tradeoff: if the current track's natural duration ends mid-fade, the main
+     * player auto-advances to the next track. By that point main.volume is near 0
+     * (the fade is mostly done), so any phasing artifact from "main on B at pos 0
+     * + secondary on B at pos crossfadeMs" is barely audible.
+     *
+     * Cancellation: finally block stops the secondary and restores main.volume = 1.
      */
     private suspend fun runCrossfade(crossfadeMs: Long) {
-        val outgoingItem = player.currentMediaItem ?: return
-        val outgoingPosition = player.currentPosition.coerceAtLeast(0L)
-        val outgoingPlayer = getOrBuildCrossfadePlayer()
+        val nextIndex =
+            withContext(Dispatchers.Main.immediate) { player.nextMediaItemIndex }
+        if (nextIndex < 0) return
+        val incomingItem =
+            withContext(Dispatchers.Main.immediate) {
+                if (nextIndex >= player.mediaItemCount) null else player.getMediaItemAt(nextIndex)
+            } ?: return
+        val secondary = getOrBuildCrossfadePlayer()
         try {
-            // Stage 1: load the outgoing track on the secondary player while it's still
-            // muted. We don't flip the main player or start any volume animation yet —
-            // doing so before the secondary player is decoded leaves a brief silent
-            // window (main is muted-and-advanced; secondary is buffering) that's
-            // perceived as a gap at the very start of the crossfade.
+            // Stage 1: pre-load the incoming track on the secondary player, muted.
             withContext(Dispatchers.Main.immediate) {
-                outgoingPlayer.volume = 0f
-                outgoingPlayer.setMediaItem(outgoingItem)
-                outgoingPlayer.prepare()
-                outgoingPlayer.seekTo(outgoingPosition)
-                outgoingPlayer.playWhenReady = true
+                secondary.volume = 0f
+                secondary.setMediaItem(incomingItem)
+                secondary.prepare()
+                secondary.seekTo(0L)
+                secondary.playWhenReady = true
             }
+            awaitPlayerReady(secondary, timeoutMs = CROSSFADE_READY_TIMEOUT_MS)
 
-            // Stage 2: wait for the secondary player to actually be ready to emit audio.
-            // Local file playback typically resolves in <50ms; the timeout is a safety
-            // net so a stuck player can't hang the crossfade indefinitely.
-            awaitPlayerReady(outgoingPlayer, timeoutMs = CROSSFADE_READY_TIMEOUT_MS)
-            // STATE_READY only means buffered+decoded; the audio renderer takes another
-            // ~50ms to push the first samples to the speaker. Without this delay, the
-            // first sliver of the fade has the secondary "playing" but no audio out yet.
-            delay(AUDIO_HANDOFF_DELAY_MS)
-
-            // Stage 3: cross over. Secondary is now actually emitting; flip its volume
-            // up, mute the main player, advance main to the next track in its queue.
-            withContext(Dispatchers.Main.immediate) {
-                outgoingPlayer.volume = 1f
-                player.volume = 0f
-                player.seekToNextMediaItem()
-            }
-            // Main player's audio renderer flushes the previous track and starts decoding
-            // the next one — same warmup window. Without this delay, the early animation
-            // steps drive secondary↓ + main(silent), which is what the user heard as a
-            // "tiny silent moment as it switches songs".
-            delay(AUDIO_HANDOFF_DELAY_MS)
-
+            // Stage 2: animate. Main keeps playing the current track naturally while
+            // its volume fades down; secondary plays the incoming track from start
+            // while its volume fades up. No track-switch on main during this stage.
             val steps = STEPS_PER_CROSSFADE
             val stepDelay = (crossfadeMs / steps).coerceAtLeast(MIN_STEP_DELAY_MS)
             for (i in 1..steps) {
                 delay(stepDelay)
                 val progress = i.toFloat() / steps
                 withContext(Dispatchers.Main.immediate) {
-                    outgoingPlayer.volume = (1f - progress).coerceAtLeast(0f)
-                    player.volume = progress.coerceAtMost(1f)
+                    player.volume = (1f - progress).coerceAtLeast(0f)
+                    secondary.volume = progress.coerceAtMost(1f)
                 }
+            }
+
+            // Stage 3: handoff. Main is silent (vol=0); secondary plays the new track
+            // at full volume. Advance main to the new track and seek to wherever
+            // secondary is, so playback continues seamlessly. Secondary keeps emitting
+            // through main's audio-renderer flush — that's what covers the otherwise
+            // perceptible silent moment.
+            withContext(Dispatchers.Main.immediate) {
+                if (player.currentMediaItemIndex < nextIndex) {
+                    player.seekToNextMediaItem()
+                }
+                val secondaryPos = secondary.currentPosition.coerceAtLeast(0L)
+                player.seekTo(secondaryPos)
+                player.volume = 1f
+            }
+            delay(AUDIO_HANDOFF_DELAY_MS)
+            withContext(Dispatchers.Main.immediate) {
+                secondary.stop()
+                secondary.clearMediaItems()
             }
         } finally {
             withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main.immediate) {
-                outgoingPlayer.stop()
-                outgoingPlayer.clearMediaItems()
+                secondary.stop()
+                secondary.clearMediaItems()
                 player.volume = 1f
             }
         }
