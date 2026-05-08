@@ -6,8 +6,6 @@ import android.media.MediaScannerConnection
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
-import com.migsmusic.data.local.dao.PlaybackSnapshotDao
-import com.migsmusic.data.local.dao.PlaylistDao
 import com.migsmusic.data.local.dao.SongDao
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.local.model.AlbumSummary
@@ -23,8 +21,6 @@ import java.io.File
 class LibraryRepository(
     private val context: Context,
     private val songDao: SongDao,
-    private val playlistDao: PlaylistDao,
-    private val playbackSnapshotDao: PlaybackSnapshotDao,
 ) {
     fun observeAllSongs(): Flow<List<SongEntity>> = songDao.observeAllSongs()
 
@@ -234,51 +230,25 @@ class LibraryRepository(
                 return@withContext 0
             }
 
-            // Detect MediaStore _ID reassignments BEFORE we touch songs, so we can keep
-            // playlists pointed at the right tracks. MediaScanner sometimes reassigns _ID
-            // for the same on-disk file when it re-reads tags; previously the new _ID
-            // landed in songs as a "new" row while playlist_songs still pointed at the old
-            // _ID — the song silently dropped out of every playlist that referenced it.
-            //
-            // Now: build the (newId-keyed) view of what the scan saw, intersect against
-            // the (oldId-keyed) view of what's already in songs by absolutePath, and remap
-            // playlist_songs.songId from old to new for any path whose id changed.
-            val previousByPath: Map<String, Long> =
-                songDao.getIdAndPaths().associate { it.absolutePath to it.id }
-            val newPathToId: Map<String, Long> =
-                songs.asSequence()
-                    .filter { it.absolutePath.isNotEmpty() }
-                    .associate { it.absolutePath to it.id }
-            val remapped = mutableListOf<Pair<Long, Long>>()
-            for ((path, newId) in newPathToId) {
-                val oldId = previousByPath[path] ?: continue
-                if (oldId != newId) remapped += oldId to newId
-            }
-            if (remapped.isNotEmpty()) {
-                Log.i(TAG, "scanDevice: remapping ${remapped.size} song id(s) due to MediaStore _ID reassignment")
-                for ((oldId, newId) in remapped) {
-                    playlistDao.remapSongId(oldId = oldId, newId = newId)
-                }
-                // The playback snapshot stores comma-separated ids; remapping its serialized
-                // strings is fragile, so just drop the persisted snapshot when any remap
-                // occurs. The in-memory queue is unaffected; the user just loses the saved
-                // position on the next cold start. Rare event; acceptable.
-                playbackSnapshotDao.clearSnapshot()
-            }
-
             // Chunk the upsert so a 50k-song library doesn't pin a single all-or-nothing
             // transaction (and a single huge SQLite statement). [SongDao.upsertAllChunked]
             // wraps the per-chunk loop in ONE Room transaction so we still get a single
             // commit + fsync at the end — without it each chunk was its own implicit
             // transaction, multiplying disk traffic ~5-10× on cold-start scans.
+            //
+            // Pre-v7 we needed to detect+remap MediaStore _ID reassignments here (because
+            // playlist_songs FK'd on songs.id, and a re-tagged file could get a new _ID).
+            // Post-v7 the cross-ref FKs target absolutePath, which doesn't change on
+            // re-tagging — so the remap dance is gone.
             songDao.upsertAllChunked(songs.chunked(UPSERT_CHUNK_SIZE))
 
-            // Now that remapping has moved any orphaned references to the new ids, prune
-            // genuinely-missing songs. This deletes rows whose absolute file no longer
-            // appears in MediaStore — i.e. real deletions, not transient _ID churn.
-            // CASCADE on playlist_songs.songId is now safe: the references for songs whose
-            // _ID was reassigned have been updated to the new id above, so they survive.
-            pruneMissingSongs(songs.map { it.id }.toSet())
+            // Prune songs whose file is no longer in the MediaStore scan AND not on disk.
+            // The on-disk check guards against the transient state where MediaScanner has
+            // briefly cleared IS_MUSIC for a file it's re-reading tags on — we don't want
+            // to delete the SongEntity (cascading hearts and playlist refs) just because
+            // the tag scanner is mid-flight. Uses absolutePath as the diff key, since _ID
+            // may have changed for files that survived re-tagging.
+            pruneMissingSongs(songs.asSequence().map { it.absolutePath }.filter { it.isNotEmpty() }.toSet())
             songs.size
         }
 
@@ -287,11 +257,34 @@ class LibraryRepository(
         private const val TAG = "LibraryRepository"
     }
 
-    private suspend fun pruneMissingSongs(currentSongIds: Set<Long>) {
-        val missingIds = songDao.getAllSongIds().filterNot(currentSongIds::contains)
-        if (missingIds.isEmpty()) return
-
-        missingIds.chunked(500).forEach { chunk ->
+    /**
+     * Delete SongEntity rows whose `absolutePath` is no longer present in the just-completed
+     * MediaStore scan ([scannedPaths]) AND whose file isn't on disk. The disk-check guards
+     * against MediaScanner's tag-rescan transient: while MediaScanner re-reads tags it
+     * briefly clears `IS_MUSIC`, so our `IS_MUSIC != 0` query doesn't see the row — but the
+     * file is still very much there. Without the guard we'd delete the SongEntity and
+     * (post-v7) CASCADE the playlist + heart references for a file that's about to come
+     * right back. With the guard, the transient state is invisible to us.
+     *
+     * Genuinely-deleted files: not in scan, not on disk → pruned. CASCADE fires correctly.
+     */
+    private suspend fun pruneMissingSongs(scannedPaths: Set<String>) {
+        val all = songDao.getIdAndPaths()
+        if (all.isEmpty()) return
+        val toPruneIds =
+            all.asSequence()
+                .filter { it.absolutePath !in scannedPaths }
+                .filter {
+                    // File.exists() is a stat() syscall — fast (microseconds). Worst case
+                    // here is a library where many songs have changed; that's still well
+                    // under a second of stat work for tens of thousands of files.
+                    !File(it.absolutePath).exists()
+                }
+                .map { it.id }
+                .toList()
+        if (toPruneIds.isEmpty()) return
+        Log.i(TAG, "scanDevice: pruning ${toPruneIds.size} song row(s) with missing files")
+        toPruneIds.chunked(500).forEach { chunk ->
             songDao.deleteByIds(chunk)
         }
     }
