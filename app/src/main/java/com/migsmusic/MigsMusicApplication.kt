@@ -16,7 +16,9 @@ import com.migsmusic.data.local.AppDatabase
 import com.migsmusic.data.local.MIGRATION_2_3
 import com.migsmusic.data.local.MIGRATION_3_4
 import com.migsmusic.data.local.MIGRATION_4_5
+import com.migsmusic.data.local.MIGRATION_5_6
 import com.migsmusic.data.repository.LibraryRepository
+import com.migsmusic.data.repository.LovesRepository
 import com.migsmusic.data.repository.PlaybackSessionRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackManager
@@ -35,7 +37,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
                 AppDatabase::class.java,
                 "migs-music.db",
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration(dropAllTables = false)
                 // WAL lets scanDevice writes overlap with UI reads (e.g. observeAllSongs Flow
                 // firing while ContentObserver-driven upserts run). Default TRUNCATE journal
@@ -58,6 +60,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
             PlaybackSessionRepository(
                 playbackSnapshotDao = database.playbackSnapshotDao(),
             )
+        val lovesRepository = LovesRepository(database.lovedSongDao())
 
         val preferences = AppPreferences(applicationContext)
         val orphanAudioTracker = OrphanAudioTracker(applicationContext)
@@ -87,6 +90,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
                 preferences = preferences,
                 autoImportService = autoImportService,
                 orphanAudioTracker = orphanAudioTracker,
+                lovesRepository = lovesRepository,
             )
 
         // Watch MediaStore for new audio files; auto-rescan when changes settle so the user
@@ -136,6 +140,7 @@ data class AppContainer(
     val preferences: AppPreferences,
     val autoImportService: AutoImportService,
     val orphanAudioTracker: OrphanAudioTracker,
+    val lovesRepository: LovesRepository,
 )
 
 /**

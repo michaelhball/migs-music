@@ -4,9 +4,11 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.migsmusic.data.local.dao.LovedSongDao
 import com.migsmusic.data.local.dao.PlaybackSnapshotDao
 import com.migsmusic.data.local.dao.PlaylistDao
 import com.migsmusic.data.local.dao.SongDao
+import com.migsmusic.data.local.entity.LovedSongEntity
 import com.migsmusic.data.local.entity.PlaybackSnapshotEntity
 import com.migsmusic.data.local.entity.PlaylistEntity
 import com.migsmusic.data.local.entity.PlaylistSongEntity
@@ -18,8 +20,9 @@ import com.migsmusic.data.local.entity.SongEntity
         PlaylistEntity::class,
         PlaylistSongEntity::class,
         PlaybackSnapshotEntity::class,
+        LovedSongEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,6 +31,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
 
     abstract fun playbackSnapshotDao(): PlaybackSnapshotDao
+
+    abstract fun lovedSongDao(): LovedSongDao
 }
 
 /**
@@ -68,5 +73,25 @@ val MIGRATION_4_5 =
     object : Migration(4, 5) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE songs ADD COLUMN absolutePath TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+/**
+ * v6 adds the `loved_songs` table — local-only "hearts" that survive every
+ * Mac sync. Cascade delete from `songs` so removing a song from the library
+ * also removes its heart.
+ */
+val MIGRATION_5_6 =
+    object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE loved_songs (
+                    songId INTEGER NOT NULL PRIMARY KEY,
+                    addedAtSeconds INTEGER NOT NULL,
+                    FOREIGN KEY(songId) REFERENCES songs(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
         }
     }

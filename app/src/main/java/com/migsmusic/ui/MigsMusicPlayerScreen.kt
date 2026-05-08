@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -419,13 +421,29 @@ internal fun PlayerRoute(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Secondary row: queue access only. Right-aligned so it doesn't compete with
-            // the transport row visually. "Clear Up Next" lives on the queue screen now —
-            // not a daily action, so a button on the player was overkill.
+            // Secondary row: heart on the left, queue on the right. Two distinct
+            // affordances at opposite ends so they don't crowd each other or the
+            // transport row above.
+            val isLoved by playerViewModel.isCurrentSongLoved.collectAsStateWithLifecycle()
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                IconButton(
+                    onClick = playerViewModel::toggleLoveCurrent,
+                    modifier = Modifier.testTag(UiTestTags.PlayerHeart),
+                ) {
+                    Icon(
+                        if (isLoved) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (isLoved) "Remove from Loves" else "Add to Loves",
+                        tint =
+                            if (isLoved) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                    )
+                }
                 IconButton(
                     onClick = onOpenQueue,
                     modifier = Modifier.testTag(UiTestTags.PlayerOpenQueue),

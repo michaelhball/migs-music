@@ -84,7 +84,11 @@ fun MigsMusicApp(
         viewModel(
             factory =
                 ViewModelFactory {
-                    PlayerViewModel(appContainer.playbackManager, appContainer.preferences)
+                    PlayerViewModel(
+                        appContainer.playbackManager,
+                        appContainer.preferences,
+                        appContainer.lovesRepository,
+                    )
                 },
         )
 
@@ -329,9 +333,30 @@ fun MigsMusicApp(
                 composable("playlists") {
                     PlaylistsRoute(
                         playlistsViewModel = playlistsViewModel,
+                        lovesRepository = appContainer.lovesRepository,
                         onOpenPlaylist = { playlistId ->
                             navController.navigate("playlist/$playlistId")
                         },
+                        onOpenLoves = { navController.navigate("loves") },
+                    )
+                }
+                composable("loves") {
+                    val lovesViewModel: LovesViewModel =
+                        viewModel(
+                            factory =
+                                ViewModelFactory {
+                                    LovesViewModel(
+                                        appContainer.lovesRepository,
+                                        appContainer.playbackManager,
+                                    )
+                                },
+                        )
+                    LovesRoute(
+                        lovesViewModel = lovesViewModel,
+                        playlistsViewModel = playlistsViewModel,
+                        playerViewModel = playerViewModel,
+                        onGoToAlbum = { album, artist -> navController.navigate(albumRoute(album, artist)) },
+                        onGoToArtist = { artist -> navController.navigate(artistRoute(artist)) },
                     )
                 }
                 composable(

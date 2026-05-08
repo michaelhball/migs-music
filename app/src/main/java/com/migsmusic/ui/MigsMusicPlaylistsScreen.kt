@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
@@ -59,9 +60,13 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 internal fun PlaylistsRoute(
     playlistsViewModel: PlaylistsViewModel,
+    lovesRepository: com.migsmusic.data.repository.LovesRepository,
     onOpenPlaylist: (Long) -> Unit,
+    onOpenLoves: () -> Unit,
 ) {
     val playlists by playlistsViewModel.playlists.collectAsStateWithLifecycle()
+    val lovesCount by lovesRepository.observeCount()
+        .collectAsStateWithLifecycle(initialValue = 0)
     val importStaging by playlistsViewModel.importStaging.collectAsStateWithLifecycle()
     val availableM3uFiles by playlistsViewModel.availableM3uFiles.collectAsStateWithLifecycle()
     val playlistSortOrder by playlistsViewModel.playlistSortOrder.collectAsStateWithLifecycle()
@@ -158,21 +163,30 @@ internal fun PlaylistsRoute(
                     },
                 )
             }
-            if (playlists.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    EmptyState("No playlists yet.\nTap + to create one.")
-                }
-                return@Column
-            }
+            // The "Loves" virtual playlist sits above the user-created list. Always
+            // shown even when there's nothing in it — surfaces the heart feature so
+            // it's discoverable without scrolling or hunting through Settings.
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                itemsIndexed(playlists, key = { _, item -> item.id }) { _, playlist ->
-                    PlaylistListRow(
-                        playlist = playlist,
-                        onOpen = { onOpenPlaylist(playlist.id) },
-                        onRename = { renameTarget = playlist.id },
-                        onDelete = { playlistsViewModel.deletePlaylist(playlist.id) },
-                    )
+                item("loves") {
+                    LovesPlaylistRow(count = lovesCount, onOpen = onOpenLoves)
                     HorizontalDivider()
+                }
+                if (playlists.isEmpty()) {
+                    item("empty-hint") {
+                        Box(modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
+                            EmptyState("No playlists yet.\nTap + to create one.")
+                        }
+                    }
+                } else {
+                    itemsIndexed(playlists, key = { _, item -> item.id }) { _, playlist ->
+                        PlaylistListRow(
+                            playlist = playlist,
+                            onOpen = { onOpenPlaylist(playlist.id) },
+                            onRename = { renameTarget = playlist.id },
+                            onDelete = { playlistsViewModel.deletePlaylist(playlist.id) },
+                        )
+                        HorizontalDivider()
+                    }
                 }
             }
         }
@@ -536,6 +550,34 @@ internal fun PlaylistDetailRoute(
             }
         }
     }
+}
+
+@Composable
+private fun LovesPlaylistRow(
+    count: Int,
+    onOpen: () -> Unit,
+) {
+    ListRow(
+        title = "Loves",
+        subtitle =
+            when (count) {
+                0 -> "Tap a heart on the player to add songs"
+                1 -> "1 song"
+                else -> "$count songs"
+            },
+        modifier =
+            Modifier
+                .testTag(UiTestTags.LovesPlaylistRow)
+                .clickable(onClick = onOpen),
+        titleFontWeight = FontWeight.SemiBold,
+        leading = {
+            Icon(
+                Icons.Default.Favorite,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+    )
 }
 
 @Composable
