@@ -141,10 +141,11 @@ interface SongDao {
     fun searchSongs(query: String): Flow<List<SongEntity>>
 
     // @Upsert (INSERT-or-UPDATE) instead of @Insert(REPLACE) (DELETE-then-INSERT).
-    // The REPLACE path triggers ON DELETE CASCADE on `playlist_songs.songId`, wiping
-    // every playlist's contents on every scanDevice() pass — observed in practice when
-    // the auto-import receiver started running scanDevice before each sync. Upsert keeps
-    // the row identity stable, so foreign-key dependents survive.
+    // Originally adopted because REPLACE triggered CASCADE on `playlist_songs.songId`,
+    // wiping playlists on every scan. Post-v7 the cross-ref FKs target `absolutePath`
+    // (stable across MediaStore _ID churn), so REPLACE wouldn't be destructive anymore —
+    // but Upsert is still semantically correct (we're updating metadata for an existing
+    // file, not replacing it) and avoids unnecessary writes.
     @Upsert
     suspend fun upsertAll(songs: List<SongEntity>)
 
@@ -170,14 +171,25 @@ interface SongDao {
     suspend fun deleteByIds(ids: List<Long>)
 
     /**
-     * (id, absolutePath) for every song. Used by [com.migsmusic.data.repository.LibraryRepository.scanDevice]
-     * to detect MediaStore _ID reassignments — a row whose absolutePath matches what the
-     * scan just saw but with a different id is the same file with a new _ID, and the scan
-     * remaps `playlist_songs.songId` before cleaning up the old row.
+     * (id, absolutePath) for every song. Pre-v7 this powered the playlist-songId remap
+     * logic; post-v7 the cross-ref FKs target absolutePath directly so remap is moot.
+     * Kept for callers that want a fast diff of "what's already in the library by path".
      */
     @Query("SELECT id, absolutePath FROM songs WHERE absolutePath != ''")
     suspend fun getIdAndPaths(): List<SongIdPath>
+
+    /**
+     * Resolve a list of [songIds] (MediaStore `_ID` values) to their current absolute
+     * paths. Used by repos translating songId-land callers (UI/playback) into the v7
+     * absolutePath cross-ref scheme. Order of the result is unspecified — callers map
+     * by id.
+     */
+    @Query("SELECT id AS songId, absolutePath FROM songs WHERE id IN (:songIds)")
+    suspend fun resolveAbsolutePaths(songIds: List<Long>): List<SongIdAndPath>
 }
+
+/** Projection for [SongDao.resolveAbsolutePaths]. */
+data class SongIdAndPath(val songId: Long, val absolutePath: String)
 
 /** Projection for [SongDao.getIdAndPaths]. */
 data class SongIdPath(

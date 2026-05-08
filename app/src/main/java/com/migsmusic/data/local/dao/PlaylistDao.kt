@@ -30,7 +30,7 @@ interface PlaylistDao {
         SELECT
             playlist_songs.playlistItemId AS playlistItemId,
             playlist_songs.playlistId AS playlistId,
-            playlist_songs.songId AS songId,
+            songs.id AS songId,
             songs.title AS title,
             songs.artist AS artist,
             songs.album AS album,
@@ -38,7 +38,7 @@ interface PlaylistDao {
             playlist_songs.position AS position,
             songs.albumArtUri AS albumArtUri
         FROM playlist_songs
-        INNER JOIN songs ON songs.id = playlist_songs.songId
+        INNER JOIN songs ON songs.absolutePath = playlist_songs.songAbsolutePath
         WHERE playlist_songs.playlistId = :playlistId
         ORDER BY playlist_songs.position
         """,
@@ -67,37 +67,31 @@ interface PlaylistDao {
     suspend fun getSyncedPlaylists(): List<PlaylistEntity>
 
     /**
-     * Songs whose ONLY playlist references are in [removedPlaylistIds]. Used by the audio-
-     * cleanup path of the sync prune flow: when a playlist is removed, any song that wasn't
-     * also reachable via another (manual or synced) playlist is a candidate for file deletion.
-     * Returns an empty list if the input is empty.
+     * Returns the current MediaStore-_ID-resolved [songs.id] for songs whose ONLY playlist
+     * references are in [removedPlaylistIds]. Used by the audio-cleanup path of the sync
+     * prune flow: when a playlist is removed, any song that wasn't also reachable via
+     * another (manual or synced) playlist is a candidate for file deletion. Resolves to
+     * songs.id at query time so callers always see the current MediaStore _ID.
      */
     @Query(
         """
-        SELECT DISTINCT songId FROM playlist_songs
-        WHERE playlistId IN (:removedPlaylistIds)
-        AND songId NOT IN (
-            SELECT songId FROM playlist_songs WHERE playlistId NOT IN (:removedPlaylistIds)
+        SELECT DISTINCT songs.id FROM playlist_songs
+        INNER JOIN songs ON songs.absolutePath = playlist_songs.songAbsolutePath
+        WHERE playlist_songs.playlistId IN (:removedPlaylistIds)
+        AND playlist_songs.songAbsolutePath NOT IN (
+            SELECT songAbsolutePath FROM playlist_songs WHERE playlistId NOT IN (:removedPlaylistIds)
         )
         """,
     )
     suspend fun getOrphanSongIds(removedPlaylistIds: List<Long>): List<Long>
 
     /**
-     * Remap a `playlist_songs.songId` reference from [oldId] to [newId]. Used by the
-     * library scan when MediaStore reassigns a song's _ID for the same on-disk file —
-     * playlists keep their membership instead of orphaning. No-op if no rows reference
-     * [oldId].
+     * True if [songAbsolutePath] is not referenced by any playlist_songs row. Used by the
+     * per-song orphan cleanup in AutoImportService when a song drops out of a still-synced
+     * playlist on the Mac side.
      */
-    @Query("UPDATE playlist_songs SET songId = :newId WHERE songId = :oldId")
-    suspend fun remapSongId(
-        oldId: Long,
-        newId: Long,
-    )
-
-    /** True if [songId] is not referenced by any playlist_songs row. */
-    @Query("SELECT NOT EXISTS(SELECT 1 FROM playlist_songs WHERE songId = :songId)")
-    suspend fun songIsUnreferenced(songId: Long): Boolean
+    @Query("SELECT NOT EXISTS(SELECT 1 FROM playlist_songs WHERE songAbsolutePath = :songAbsolutePath)")
+    suspend fun songIsUnreferenced(songAbsolutePath: String): Boolean
 
     @Query("DELETE FROM playlists WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
@@ -202,4 +196,12 @@ interface PlaylistDao {
         clearPlaylistSongs(playlistId)
         items.forEach { insertPlaylistSong(it.copy(playlistItemId = 0, playlistId = playlistId)) }
     }
+
+    /**
+     * Reverse direction: resolve a list of absolute paths to their current MediaStore
+     * `_ID` values. Used when the repo has paths from `playlist_songs` rows and needs to
+     * surface ids to a caller. Returns ids in unspecified order.
+     */
+    @Query("SELECT id FROM songs WHERE absolutePath IN (:paths)")
+    suspend fun getPlaylistSongIdsByPath(paths: List<String>): List<Long>
 }

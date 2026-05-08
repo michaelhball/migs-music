@@ -39,7 +39,7 @@ class LovesRepositoryTest {
             Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
                 .allowMainThreadQueries()
                 .build()
-        repo = LovesRepository(db.lovedSongDao())
+        repo = LovesRepository(db.lovedSongDao(), db.songDao())
         // Seed a few songs so love/unlove has real FK targets.
         runBlocking {
             db.songDao().upsertAll(
@@ -136,7 +136,10 @@ class LovesRepositoryTest {
     private fun loved(
         songId: Long,
         addedAt: Long,
-    ) = com.migsmusic.data.local.entity.LovedSongEntity(songId, addedAt)
+    ) = com.migsmusic.data.local.entity.LovedSongEntity(
+        songAbsolutePath = "/storage/emulated/0/Music/song$songId.mp3",
+        addedAtSeconds = addedAt,
+    )
 
     private fun fakeSong(id: Long) =
         SongEntity(

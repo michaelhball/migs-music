@@ -38,7 +38,7 @@ class PlaylistRepositoryTest {
             Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
                 .allowMainThreadQueries() // safe in tests; keeps the assertions linear
                 .build()
-        repository = PlaylistRepository(db.playlistDao())
+        repository = PlaylistRepository(db.playlistDao(), db.songDao())
         // Seed the songs table so the FK on playlist_songs.songId can be satisfied.
         runBlocking {
             db.songDao().upsertAll(

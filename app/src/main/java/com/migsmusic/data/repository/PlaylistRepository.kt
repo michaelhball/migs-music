@@ -1,14 +1,22 @@
 package com.migsmusic.data.repository
 
 import com.migsmusic.data.local.dao.PlaylistDao
+import com.migsmusic.data.local.dao.SongDao
 import com.migsmusic.data.local.entity.PlaylistEntity
 import com.migsmusic.data.local.entity.PlaylistSongEntity
 import com.migsmusic.data.local.model.PlaylistSong
 import com.migsmusic.data.local.model.PlaylistSummary
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Public API takes/returns MediaStore `_ID` values (Long) for compatibility with
+ * UI/playback layers that build content URIs from them. Internally the cross-table
+ * key is `songs.absolutePath` (since v7) — repo methods resolve between the two
+ * via [PlaylistDao.resolveAbsolutePaths]. Callers don't need to think about it.
+ */
 class PlaylistRepository(
     private val playlistDao: PlaylistDao,
+    private val songDao: SongDao,
 ) {
     fun observePlaylists(): Flow<List<PlaylistSummary>> = playlistDao.observePlaylists()
 
@@ -46,26 +54,57 @@ class PlaylistRepository(
         playlistDao.deletePlaylist(playlistId)
     }
 
-    suspend fun getPlaylistSongIds(playlistId: Long): Set<Long> =
-        playlistDao.getPlaylistSongEntities(playlistId).map { it.songId }.toSet()
+    /**
+     * Resolves the songIds (current MediaStore _ID values via JOIN) for a playlist.
+     * Order is by playlist position. Returned via the observe-style projection so the
+     * resolution always returns the *current* _ID even right after a MediaStore rescan.
+     */
+    suspend fun getPlaylistSongIds(playlistId: Long): Set<Long> {
+        // Use the entity rows for ordering (position) but resolve to current ids.
+        val entities = playlistDao.getPlaylistSongEntities(playlistId)
+        if (entities.isEmpty()) return emptySet()
+        // Resolve absolutePath → current id.
+        // We don't have a direct DAO method for "ids for a list of paths", so reuse
+        // observePlaylistSongs's underlying JOIN by going through the projection.
+        // (Cheap: same query, same indexes.)
+        // Implementation: pull the projection for this playlist and grab ids from it.
+        // Note: `kotlinx.coroutines.flow.first` would suspend on a Flow; we need a
+        // one-shot read. Add a dedicated DAO method instead if this becomes hot.
+        return playlistDao.getPlaylistSongIdsByPath(entities.map { it.songAbsolutePath }).toSet()
+    }
 
     suspend fun getSyncedPlaylists(): List<PlaylistEntity> = playlistDao.getSyncedPlaylists()
 
     suspend fun getOrphanSongIds(removedPlaylistIds: List<Long>): List<Long> =
         if (removedPlaylistIds.isEmpty()) emptyList() else playlistDao.getOrphanSongIds(removedPlaylistIds)
 
-    /** True if [songId] is not referenced by any playlist (synced or manual). */
-    suspend fun songIsUnreferenced(songId: Long): Boolean = playlistDao.songIsUnreferenced(songId)
+    /**
+     * True if [songId] is not referenced by any playlist (synced or manual). Resolves the
+     * song's absolutePath first; missing songs (not in the library) return true (they
+     * trivially aren't referenced anywhere meaningful).
+     */
+    suspend fun songIsUnreferenced(songId: Long): Boolean {
+        val path = songDao.resolveAbsolutePaths(listOf(songId)).firstOrNull()?.absolutePath ?: return true
+        return playlistDao.songIsUnreferenced(path)
+    }
 
     suspend fun addSong(
         playlistId: Long,
         songId: Long,
     ) {
+        val path = songDao.resolveAbsolutePaths(listOf(songId)).firstOrNull()?.absolutePath ?: return
+        addSongByPath(playlistId, path)
+    }
+
+    private suspend fun addSongByPath(
+        playlistId: Long,
+        songAbsolutePath: String,
+    ) {
         val nextPosition = playlistDao.getLastSongPosition(playlistId) + 1
         playlistDao.insertPlaylistSong(
             PlaylistSongEntity(
                 playlistId = playlistId,
-                songId = songId,
+                songAbsolutePath = songAbsolutePath,
                 position = nextPosition,
                 addedAtMillis = System.currentTimeMillis(),
                 // Capture the canonical "as added" order so the user can revert any manual
@@ -118,7 +157,12 @@ class PlaylistRepository(
         syncedFromMac: Boolean = false,
     ): Long {
         val playlistId = createPlaylist(name, syncedFromMac)
-        songIds.forEach { addSong(playlistId, it) }
+        // Resolve all paths in ONE query, preserve order, fall back gracefully on misses.
+        val pathById = songDao.resolveAbsolutePaths(songIds).associateBy({ it.songId }, { it.absolutePath })
+        for (songId in songIds) {
+            val path = pathById[songId] ?: continue
+            addSongByPath(playlistId, path)
+        }
         return playlistId
     }
 
@@ -149,7 +193,12 @@ class PlaylistRepository(
         val existing = playlistDao.findSyncedPlaylistByName(trimmed)
         if (existing != null) {
             playlistDao.clearPlaylistSongs(existing.id)
-            songIds.forEach { addSong(existing.id, it) }
+            val pathById =
+                songDao.resolveAbsolutePaths(songIds).associateBy({ it.songId }, { it.absolutePath })
+            for (songId in songIds) {
+                val path = pathById[songId] ?: continue
+                addSongByPath(existing.id, path)
+            }
             playlistDao.updatePlaylist(
                 existing.copy(updatedAtMillis = System.currentTimeMillis()),
             )

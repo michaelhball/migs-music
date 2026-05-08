@@ -55,13 +55,11 @@ class AutoImportSingleFileTest {
             Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
                 .allowMainThreadQueries()
                 .build()
-        playlistRepository = PlaylistRepository(db.playlistDao())
+        playlistRepository = PlaylistRepository(db.playlistDao(), db.songDao())
         libraryRepository =
             LibraryRepository(
                 context = context,
                 songDao = db.songDao(),
-                playlistDao = db.playlistDao(),
-                playbackSnapshotDao = db.playbackSnapshotDao(),
             )
         // Stub PlaybackController — these tests don't exercise the orphan-current-song path,
         // and a real PlaybackManager would spin up coroutines that outlive the test and try

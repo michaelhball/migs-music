@@ -10,21 +10,25 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LovedSongDao {
-    /** Reactive: emits whenever the heart state for [songId] changes. */
-    @Query("SELECT EXISTS(SELECT 1 FROM loved_songs WHERE songId = :songId)")
-    fun observeIsLoved(songId: Long): Flow<Boolean>
+    /**
+     * Reactive: emits whenever the heart state for the song at [songAbsolutePath] changes.
+     * Callers in songId-land resolve via [PlaylistDao.resolveAbsolutePaths] first; the
+     * Repository wrapper does the resolution so consumers don't see absolutePaths at all.
+     */
+    @Query("SELECT EXISTS(SELECT 1 FROM loved_songs WHERE songAbsolutePath = :songAbsolutePath)")
+    fun observeIsLoved(songAbsolutePath: String): Flow<Boolean>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(loved: LovedSongEntity)
 
-    @Query("DELETE FROM loved_songs WHERE songId = :songId")
-    suspend fun delete(songId: Long)
+    @Query("DELETE FROM loved_songs WHERE songAbsolutePath = :songAbsolutePath")
+    suspend fun delete(songAbsolutePath: String)
 
     /** All loved songs joined with their full SongEntity, most-recent first. */
     @Query(
         """
         SELECT s.* FROM loved_songs l
-        INNER JOIN songs s ON s.id = l.songId
+        INNER JOIN songs s ON s.absolutePath = l.songAbsolutePath
         ORDER BY l.addedAtSeconds DESC
         """,
     )
