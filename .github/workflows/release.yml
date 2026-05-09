@@ -1,20 +1,33 @@
-# Auto-build a release .aab when a `vX.Y.Z` tag is pushed.
+# Auto-build a release on every `vX.Y.Z` tag push.
 #
 # Triggered by: `git tag v0.2.0 && git push --tags` (typically via `./release.sh 0.2.0 --tag`).
-# Builds a signed Android App Bundle and attaches it to the GitHub Release for that tag.
 #
-# Doesn't upload to Play Console — that's a separate step the developer does manually for now,
-# until the Google Play Developer API service account is wired up. The .aab attached to the
-# Release page is the same file you'd upload manually.
+# What this does:
+#   1. Builds a signed APK + AAB.
+#   2. Attaches both to the GitHub Release for that tag (creates the release if missing).
+#   3. If the optional PLAY_SERVICE_ACCOUNT_JSON secret is set, also uploads the AAB to the
+#      Play Store **Internal testing** track. Internal track is invitation-only (your testers
+#      by email), no Google review, instant rollout. Promotion to closed/open/production
+#      tracks is still a manual click in the Play Console — by design, so a one-line bug
+#      can't ship to everyone unattended.
 #
-# Requires GitHub Secrets to be configured:
-#   - KEYSTORE_BASE64           base64-encoded contents of the release keystore .jks
-#   - KEYSTORE_PASSWORD         keystore password
-#   - KEY_ALIAS                 key alias inside the keystore
-#   - KEY_PASSWORD              key password
+# Required GitHub Secrets (Settings → Secrets and variables → Actions):
 #
-# Set these via the repo's Settings → Secrets and variables → Actions. Encode the keystore:
-#   base64 -i ~/migs-music-release.jks | pbcopy
+#   ALWAYS REQUIRED — for signing:
+#     KEYSTORE_BASE64       base64-encoded release-keystore.jks
+#     KEYSTORE_PASSWORD     keystore password
+#     KEY_ALIAS             key alias inside the keystore
+#     KEY_PASSWORD          key password
+#
+#   OPTIONAL — for Play Store auto-upload:
+#     PLAY_SERVICE_ACCOUNT_JSON  full JSON contents of the Google Cloud service account
+#                                key with Play Developer API + "Release manager" role
+#                                granted in the Play Console.
+#
+# When PLAY_SERVICE_ACCOUNT_JSON is unset (e.g. before Play Console is configured), the
+# Play upload step is skipped silently — the GitHub release still publishes.
+#
+# Setup steps for the Play Store upload (one-time): see RELEASING.md.
 
 name: Release
 
@@ -27,7 +40,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # so the workflow can attach the .aab to the GitHub Release.
+      contents: write # so the workflow can attach the .apk + .aab to the GitHub Release.
 
     steps:
       - uses: actions/checkout@v4
@@ -61,8 +74,8 @@ jobs:
 
       - name: Build signed APK + AAB
         # APK is what most users sideload via the Releases page; AAB is what the
-        # Play Store wants if/when we publish there. Building both means the
-        # release artefact set covers either path without a second workflow run.
+        # Play Store wants. Building both means the release artefact set covers
+        # either install path without a second workflow run.
         run: ./gradlew --no-daemon :app:assembleRelease :app:bundleRelease
 
       - name: Extract version from tag
@@ -87,3 +100,39 @@ jobs:
               --title "v${VERSION}" \
               --notes "Release v${VERSION}. See commit log for changes."
           fi
+
+      # Pre-check: GitHub Actions doesn't expose secrets to step `if:` conditions
+      # directly. The pattern is to promote the secret to env first, then check
+      # that the env var is non-empty in a subsequent step's condition.
+      - name: Check if Play Store upload is configured
+        id: play_check
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [[ -n "$PLAY_SERVICE_ACCOUNT_JSON" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Play Store upload not configured (PLAY_SERVICE_ACCOUNT_JSON secret unset). Skipping."
+          fi
+
+      - name: Upload AAB to Play Store Internal track
+        if: steps.play_check.outputs.configured == 'true'
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          # The service account's credentials. Plain-text-JSON form, not a path —
+          # the action writes it to a temp file internally.
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.migsmusic
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          # `internal` = invite-only testers, instant rollout, no Google review.
+          # Promotion to closed/open/production tracks is a manual click in the
+          # Play Console — kept manual on purpose so a one-line bug can't escape
+          # to all users without a human checkpoint.
+          track: internal
+          # `completed` = visible to internal testers immediately. `draft` would
+          # require us to flip it to "release" in the Play Console manually.
+          status: completed
+          # Roll out to 100% of internal testers. (Staged rollout makes more sense
+          # for production track; for internal it's all-or-nothing anyway.)
+          inAppUpdatePriority: 2
