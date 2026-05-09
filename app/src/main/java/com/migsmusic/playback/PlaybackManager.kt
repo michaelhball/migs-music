@@ -970,7 +970,15 @@ class PlaybackManager(
                     .setTitle(song.title)
                     .setArtist(song.artist)
                     .setAlbumTitle(song.album)
-                    .setArtworkUri(song.albumArtUri?.toUri())
+                    // Deliberately NOT calling setArtworkUri here. The system's bitmap
+                    // loader on some OEMs (OnePlus in particular) silently fails to resolve
+                    // the MediaStore album-art URI from a background context — and once it
+                    // has reported "no art" to the MediaSession, the lock-screen / shade /
+                    // Quick Settings cards stay blank even after our embedArtworkForCurrent
+                    // pushes the actual bytes via setArtworkData. Skipping setArtworkUri
+                    // entirely makes our setArtworkData call the only source of truth
+                    // for media-session artwork. Don't add it back without first verifying
+                    // OnePlus lock-screen art still works after a fresh install.
                     .build(),
             )
             .build()
@@ -992,24 +1000,38 @@ class PlaybackManager(
      */
     private suspend fun loadArtworkBytes(song: SongEntity): ByteArray? =
         withContext(Dispatchers.IO) {
-            // Path 1: MediaStore album URI (fast).
-            song.albumArtUri?.let { uri ->
-                runCatching {
-                    applicationContext.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
-                }.getOrNull()
-            }?.let { return@withContext it }
+            // Path 1: MediaStore album URI (fast). Treat empty bytes as a miss — some OEM
+            // providers happily open the stream and return a zero-byte body when they
+            // don't actually have the art (instead of failing the open). Without the
+            // isNotEmpty guard we'd ship 0 bytes to setArtworkData and the lock screen
+            // would stay blank with no fallback to path 2.
+            song.albumArtUri
+                ?.let { uri ->
+                    runCatching {
+                        applicationContext.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+                    }.getOrNull()
+                }
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { return@withContext it }
 
             // Path 2: read embedded picture from the audio file. MediaMetadataRetriever
             // can take a content URI directly; the platform handles the read.
-            runCatching {
-                val mmr = android.media.MediaMetadataRetriever()
-                try {
-                    mmr.setDataSource(applicationContext, song.contentUri.toUri())
-                    mmr.embeddedPicture
-                } finally {
-                    mmr.release()
-                }
-            }.getOrNull()
+            val embedded =
+                runCatching {
+                    val mmr = android.media.MediaMetadataRetriever()
+                    try {
+                        mmr.setDataSource(applicationContext, song.contentUri.toUri())
+                        mmr.embeddedPicture
+                    } finally {
+                        mmr.release()
+                    }
+                }.getOrNull()
+            if (embedded == null || embedded.isEmpty()) {
+                Log.i(TAG, "loadArtworkBytes: no art for '${song.title}' (path1=miss, path2=miss)")
+                null
+            } else {
+                embedded
+            }
         }
 
     /**
