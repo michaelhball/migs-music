@@ -6,7 +6,7 @@ How to build, run, test, and submit changes.
 
 - **JDK 17** (any distribution; Temurin is what CI uses).
 - **Android SDK 36** (set `ANDROID_HOME` or pass `sdk.dir` via `local.properties`).
-- A device or emulator running Android 8.0+ (API 26+). The developer's device is a OnePlus running Android 14.
+- A device or emulator running Android 8.0+ (API 26+). The developer's device is a OnePlus running Android 16.
 
 ## One-time setup per checkout
 
@@ -94,10 +94,10 @@ app/src/main/java/com/migsmusic/
 │   └── AutoImportReceiver.kt   # Manifest-declared receiver woken by Mac sync broadcast
 └── ui/
     ├── MigsMusicApp.kt         # Top-level NavHost + bottom bar
-    ├── MigsMusic{Songs,Albums,Folders,Playlists,Queue,Player}Screen.kt
+    ├── MigsMusic{Songs,Albums,Folders,Playlists,Queue,Player,Loves,Settings}Screen.kt
     ├── MigsMusicCommon.kt      # ListRow, EmptyState, AlbumArtImage, etc.
     ├── MigsMusicDialogs.kt     # AddToPlaylist + name dialogs
-    ├── {Library,Player,Playlists}ViewModel.kt
+    ├── {Library,Player,Playlists,Loves}ViewModel.kt
     └── UiTestTags.kt
 ```
 
@@ -109,7 +109,7 @@ Key architecture decisions:
 - **Snapshot persistence is conflated** through a `Channel<Unit>(CONFLATED)` consumed by a single writer coroutine — rapid skips/transitions collapse to one save.
 - **Library queries push to SQL.** Albums, artists, folder filtering are all Room `GROUP BY` queries — not in-memory.
 - **WAL journal mode** so MediaStore-driven scans don't block UI reads. WAL is also explicitly checkpointed on Activity stop so writes don't get lost across `adb install -r` cycles in development.
-- **Stable song identity via `absolutePath`.** MediaStore `_ID` reassigns when MediaScanner re-reads a file's tags. `LibraryRepository.scanDevice` detects these reassignments by joining old vs. new (id, absolutePath) pairs and remaps `playlist_songs.songId` references atomically before pruning, so playlists survive `_ID` churn.
+- **Stable song identity via `absolutePath`.** MediaStore `_ID` reassigns when MediaScanner re-reads a file's tags. Schema v7 fixes this at the table level: `playlist_songs.songAbsolutePath` and `loved_songs.songAbsolutePath` foreign-key against `songs.absolutePath` (a stable on-disk path), not `songs.id` (the volatile MediaStore `_ID`). The repos still expose songId-based APIs to UI / playback for content-URI building; the absolutePath round-trip happens internally via `SongDao.resolveAbsolutePaths`. See `MIGRATION_6_7` in `AppDatabase.kt` for the migration logic.
 - **Sync via app media dir, not SAF.** The Mac sync app pushes M3U + manifest to `/sdcard/Android/media/com.migsmusic/sync/` via `adb`. Owned by us, no permission grant required, no SAF picker (Android 11+ refuses to grant access to `/sdcard/Music` so SAF is a non-starter for our use case). Audio files still go to `/sdcard/Music/` where MediaStore indexes them.
 - **`AutoImportReceiver`** is manifest-declared with `FLAG_INCLUDE_STOPPED_PACKAGES` support so the Mac sync's broadcast wakes the app from cold-stopped state.
 - **Coil with custom `ImageLoader`** — 20% memory cache, 64MB disk cache for album art.
@@ -135,6 +135,8 @@ GitHub Actions on push and PR to `main`:
 6. Upload test + ktlint reports as artifacts on failure.
 
 Instrumented tests are **not** in CI — they need a real device. Run `scripts/device-smoke-test.sh` before merging anything that could affect runtime behaviour.
+
+A separate **release** workflow (`.github/workflows/release.yml`) triggers on `vX.Y.Z` tag push: builds signed APK + AAB, attaches both to the GitHub Release, and (when the optional `PLAY_SERVICE_ACCOUNT_JSON` secret is present) uploads the AAB to the Play Store Internal track. See `RELEASING.md` for the end-to-end flow.
 
 ## Codebase conventions
 
