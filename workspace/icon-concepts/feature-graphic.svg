@@ -1,14 +1,11 @@
-<svg viewBox="0 0 1024 500" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg viewBox="0 0 1024 500" xmlns="http://www.w3.org/2000/svg">
   <!--
-    Play Store feature graphic — 1024x500.
-    Composition: the actual launcher icon (full citrus square card) on the left
-    against a complementary background, two-line wordmark + tagline on the right.
-    No fine text or critical UI in the centre — Play crops the centre when used
-    as a banner on smaller surfaces.
+    Play Store feature graphic — 1024x500. Composition: the actual launcher
+    icon (full citrus square card, paths copied verbatim from _CHOSEN-current.svg)
+    on the left, "migs music" wordmark on the right. No taglines — keeps the
+    composition uncluttered and lets the icon do the talking.
   -->
   <defs>
-    <!-- Page background: the same yellow→orange→red gradient as the icon, but
-         angled differently so the icon card reads as a distinct surface on top. -->
     <linearGradient id="page" x1="0" y1="0" x2="1" y2="0.6">
       <stop offset="0%" stop-color="#FCD34D"/>
       <stop offset="60%" stop-color="#FB923C"/>
@@ -19,8 +16,8 @@
       <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
     </radialGradient>
 
-    <!-- Embedded launcher icon. Reference _CHOSEN-current.svg's gradients verbatim
-         so the card matches what users see on their home screen. -->
+    <!-- Below: identical defs to _CHOSEN-current.svg so the icon card matches
+         the launcher icon byte-for-byte. -->
     <linearGradient id="iconBg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#FCD34D"/>
       <stop offset="50%" stop-color="#FB923C"/>
@@ -38,6 +35,12 @@
       <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
       <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
     </radialGradient>
+    <filter id="figureShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+      <feOffset dx="0" dy="8"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
     <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
       <feOffset dx="0" dy="10"/>
@@ -51,69 +54,35 @@
   <rect width="1024" height="500" fill="url(#pageGloss)"/>
 
   <!-- Launcher icon card on the left.
-       370x370, vertical centre at y=250, so y=65..435.
-       512→370 scale = 0.7227. -->
-  <g transform="translate(60 65)" filter="url(#cardShadow)">
-    <g transform="scale(0.7227)">
-      <!-- Rounded-square background (rx ~92 matches the icon SVG). -->
-      <rect x="0" y="0" width="512" height="512" rx="92" ry="92" fill="url(#iconBg)"/>
-      <rect x="0" y="0" width="512" height="512" rx="92" ry="92" fill="url(#iconGloss)"/>
-      <!-- Note-head pair, rotated -18° (matches icon). -->
-      <g transform="translate(180 360) rotate(-18)">
-        <ellipse cx="-50" cy="0" rx="72" ry="56" fill="url(#figure)"/>
-        <ellipse cx="80" cy="-12" rx="58" ry="44" fill="url(#figure)"/>
+       Source icon viewBox is 0 0 512 512 → scale to 400x400 → 0.78125.
+       Position so the card is vertically centred (y = 50..450). -->
+  <g transform="translate(50 50)" filter="url(#cardShadow)">
+    <g transform="scale(0.78125)">
+      <!-- Card background — same gradient + radius as the launcher icon. -->
+      <rect width="512" height="512" rx="115" fill="url(#iconBg)"/>
+      <rect width="512" height="512" rx="115" fill="url(#iconGloss)"/>
+
+      <!-- Figure — identical to _CHOSEN-current.svg lines 36..44. -->
+      <g filter="url(#figureShadow)">
+        <path d="M 200 90 Q 290 50 395 125 L 405 160 Q 295 80 215 125 Z" fill="url(#figure)"/>
+        <path d="M 215 335 Q 175 230 195 110 Q 205 75 230 75 Q 252 82 250 130 Q 248 230 248 335 Z" fill="url(#figure)"/>
+        <path d="M 222 300 Q 205 220 218 130 Q 222 105 232 108 Q 240 120 238 145 Q 236 230 236 300 Z" fill="url(#innerEar)"/>
+        <path d="M 388 350 Q 410 250 400 160 Q 395 120 372 122 Q 352 130 358 175 Q 365 250 360 350 Z" fill="url(#figure)"/>
+        <path d="M 385 320 Q 400 250 392 165 Q 388 140 378 142 Q 370 150 372 180 Q 376 250 372 320 Z" fill="url(#innerEar)"/>
+        <ellipse cx="180" cy="370" rx="72" ry="56" fill="url(#figure)" transform="rotate(-18 180 370)"/>
+        <ellipse cx="155" cy="352" rx="40" ry="28" fill="url(#iconGloss)" transform="rotate(-18 155 352)"/>
+        <ellipse cx="350" cy="385" rx="58" ry="44" fill="url(#figure)" transform="rotate(-18 350 385)"/>
+        <ellipse cx="332" cy="370" rx="32" ry="22" fill="url(#iconGloss)" transform="rotate(-18 332 370)"/>
       </g>
-      <!-- Stems / ears -->
-      <path d="M 138 350
-               C 120 220, 110 110, 145 30
-               C 165 -10, 200 -10, 220 30
-               C 235 110, 220 230, 200 350 Z"
-            fill="url(#figure)"/>
-      <path d="M 248 350
-               C 230 230, 222 130, 250 60
-               C 268 28, 300 28, 318 60
-               C 340 140, 328 240, 308 350 Z"
-            fill="url(#figure)"/>
-      <!-- Inner-ear hint -->
-      <path d="M 165 280
-               C 158 200, 158 130, 178 70
-               C 192 50, 208 50, 220 75
-               C 230 150, 222 230, 210 295 Z"
-            fill="url(#innerEar)"/>
-      <path d="M 270 295
-               C 260 220, 258 145, 275 90
-               C 288 70, 305 70, 318 95
-               C 332 160, 322 235, 308 305 Z"
-            fill="url(#innerEar)"/>
-      <!-- Top beam -->
-      <path d="M 145 30
-               C 200 8, 280 8, 320 60
-               C 320 90, 300 90, 280 75
-               C 230 50, 175 60, 155 70 Z"
-            fill="url(#figure)"/>
     </g>
   </g>
 
-  <!-- Wordmark + tagline. Right column starts at x=480.
+  <!-- Wordmark only. Centred vertically against the icon card (icon centre at y≈250).
        Sized so the wordmark fits with comfortable right-margin even when rsvg
        falls back to a wider font than the requested system font. -->
-  <g transform="translate(480 0)">
-    <text x="0" y="220"
-          font-family="Helvetica, Arial, sans-serif"
-          font-size="92" font-weight="700"
-          fill="#FFFFFF"
-          letter-spacing="-1">migs music</text>
-
-    <!-- Slim white underline that hints at a playback-progress bar. -->
-    <rect x="0" y="240" width="220" height="5" rx="2.5" fill="#FFFFFF" opacity="0.9"/>
-
-    <text x="0" y="305"
-          font-family="Helvetica, Arial, sans-serif"
-          font-size="34" font-weight="500"
-          fill="#FFFFFF" opacity="0.95">local. private. fast.</text>
-    <text x="0" y="350"
-          font-family="Helvetica, Arial, sans-serif"
-          font-size="24" font-weight="400"
-          fill="#FFFFFF" opacity="0.85">your music, your phone, no cloud</text>
-  </g>
+  <text x="500" y="280"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="96" font-weight="700"
+        fill="#FFFFFF"
+        letter-spacing="-1">migs music</text>
 </svg>
