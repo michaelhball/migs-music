@@ -68,9 +68,10 @@ class QueueFlowsTest {
             "Could not read song row titles for queue test"
         }
 
-        // Switch to Queue tab and assert the upcoming order: [B, D, C, ...natural...]
-        // Per QueueEngine: addNext appends to nextItems, so after add(B), add(D) → nextItems=[B, D].
-        // addLater appends to laterItems → laterItems=[C]. upcoming = nextItems + laterItems + natural.
+        // Switch to Queue tab and assert the upcoming order: [D, B, C, ...natural...]
+        // Per QueueEngine: addNext prepends to nextItems (Apple-Music parity — the newest
+        // Play Next plays first), so after add(B), add(D) → nextItems=[D, B]. addLater
+        // appends to laterItems → laterItems=[C]. upcoming = nextItems + laterItems + natural.
         composeRule.onNodeWithTag(UiTestTags.QueueTab).performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.hasNode(UiTestTags.queueUpcomingRow(0)) &&
@@ -82,11 +83,11 @@ class QueueFlowsTest {
         val upcoming1 = composeRule.titleOfRow(UiTestTags.queueUpcomingRow(1), 0)
         val upcoming2 = composeRule.titleOfRow(UiTestTags.queueUpcomingRow(2), 0)
 
-        check(upcoming0 == rowBTitle) {
-            "Expected upcoming[0] to be '$rowBTitle' (Play Next first), got '$upcoming0'"
+        check(upcoming0 == rowDTitle) {
+            "Expected upcoming[0] to be '$rowDTitle' (most recent Play Next), got '$upcoming0'"
         }
-        check(upcoming1 == rowDTitle) {
-            "Expected upcoming[1] to be '$rowDTitle' (Play Next second), got '$upcoming1'"
+        check(upcoming1 == rowBTitle) {
+            "Expected upcoming[1] to be '$rowBTitle' (earlier Play Next), got '$upcoming1'"
         }
         check(upcoming2 == rowCTitle) {
             "Expected upcoming[2] to be '$rowCTitle' (Play Later first), got '$upcoming2'"

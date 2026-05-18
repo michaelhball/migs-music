@@ -65,9 +65,11 @@ class QueueEngine(
 
     fun addNext(songIds: List<Long>): QueueState? {
         val current = state ?: return null
+        // Prepend, not append: each Play Next jumps ahead of earlier Play-Next picks so the
+        // most recent one plays first — matching Apple Music's "Play Next" behaviour.
         state =
             current.copy(
-                nextItems = current.nextItems + songIds.map(::newEntry),
+                nextItems = songIds.map(::newEntry) + current.nextItems,
             )
         return state
     }

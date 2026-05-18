@@ -19,8 +19,9 @@ class QueueEngineTest {
         engine.addLater(listOf(20))
         val updated = engine.addNext(listOf(30))
 
+        // addNext prepends, so the later Play Next (30) lands ahead of the earlier one (10).
         assertEquals(
-            listOf(10L, 30L, 20L, 3L, 4L, 5L),
+            listOf(30L, 10L, 20L, 3L, 4L, 5L),
             updated?.upcoming?.map { it.songId },
         )
     }
