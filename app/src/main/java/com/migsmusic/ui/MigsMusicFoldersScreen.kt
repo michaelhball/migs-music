@@ -3,6 +3,7 @@ package com.migsmusic.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -99,15 +100,29 @@ internal fun HierarchicalFolderView(
     onGoToArtist: (artist: String) -> Unit,
     screenTag: String,
 ) {
-    val subfolders by libraryViewModel.subfoldersOf(parentPath)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
-    val directSongs by libraryViewModel.directSongsIn(parentPath)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
-    val recursiveSongs by libraryViewModel.songsRecursivelyIn(parentPath)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    // Collect with a null sentinel so a not-yet-loaded folder is distinguishable from a
+    // genuinely empty one — the gate below depends on telling those two apart.
+    val subfoldersOrNull by libraryViewModel.subfoldersOf(parentPath)
+        .collectAsStateWithLifecycle(initialValue = null)
+    val directSongsOrNull by libraryViewModel.directSongsIn(parentPath)
+        .collectAsStateWithLifecycle(initialValue = null)
+    val recursiveSongsOrNull by libraryViewModel.songsRecursivelyIn(parentPath)
+        .collectAsStateWithLifecycle(initialValue = null)
 
     val openAddToPlaylist = rememberAddToPlaylistTrigger(playlistsViewModel)
     val snackbar = LocalSnackbarController.current
+
+    // Hold off composing the list until every folder query has emitted at least once.
+    // The LazyColumn restores its saved scroll position the first time it composes; if
+    // that happens against the empty initial value the position clamps to the top, so
+    // returning from the full-screen player would always jump back to the folder's start.
+    val subfolders = subfoldersOrNull
+    val directSongs = directSongsOrNull
+    val recursiveSongs = recursiveSongsOrNull
+    if (subfolders == null || directSongs == null || recursiveSongs == null) {
+        Box(modifier = Modifier.fillMaxSize().testTag(screenTag))
+        return
+    }
 
     LazyColumn(
         modifier =
