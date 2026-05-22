@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -164,6 +165,77 @@ class PlaylistFlowsTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithText(renamed).fetchSemanticsNodes().isNotEmpty() &&
                 composeRule.onAllNodesWithText(name).fetchSemanticsNodes().isEmpty()
+        }
+
+        // Cleanup
+        runBlocking { app.appContainer.playlistRepository.deletePlaylist(playlistId) }
+    }
+
+    @Test
+    fun searchFiltersPlaylistRows() {
+        composeRule.waitForLibraryReady()
+        if (composeRule.hasNode(UiTestTags.PermissionButton)) return
+        composeRule.waitForLibraryScanSettled(minSongs = 2)
+
+        // Seed a playlist with 2 different songs from the library.
+        val songIds =
+            runBlocking {
+                app.appContainer.libraryRepository.observeAllSongs().first().take(2).map { it.id }
+            }
+        check(songIds.size == 2) { "Expected 2 song IDs from library, got ${songIds.size}" }
+
+        val playlistId =
+            runBlocking {
+                val id = app.appContainer.playlistRepository.createPlaylist(testPlaylistName)
+                songIds.forEach { app.appContainer.playlistRepository.addSong(id, it) }
+                id
+            }
+
+        // Open the playlist and wait for both rows.
+        composeRule.onNodeWithTag(UiTestTags.PlaylistsTab).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText(testPlaylistName).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithText(testPlaylistName).onFirst().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRow).fetchSemanticsNodes().size == 2
+        }
+
+        // Capture the first row's title so we can build a needle guaranteed to match it.
+        val firstTitle = composeRule.titleOfRow(UiTestTags.PlaylistSongRow, 0)
+        require(!firstTitle.isNullOrBlank()) { "Could not read first row title" }
+        val needle = firstTitle.take(4)
+
+        // Tap the search icon → the inline search field should appear.
+        composeRule.onNodeWithTag(UiTestTags.PlaylistDetailSearch).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.hasNode(UiTestTags.PlaylistDetailSearchField)
+        }
+
+        // Type the needle. No debounce — filter recomputes synchronously on each char.
+        composeRule.onNodeWithTag(UiTestTags.PlaylistDetailSearchField).performTextInput(needle)
+        // At least one row remains (the first title we picked the needle from). On most
+        // libraries the second row's title won't share that 4-char prefix, but we don't
+        // assume — only check that every visible row matches, and at least one is shown.
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            val rowCount = composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRow).fetchSemanticsNodes().size
+            rowCount in 1..2
+        }
+        val visibleCount = composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRow).fetchSemanticsNodes().size
+        check(visibleCount >= 1) { "Search filtered out the source row of the needle" }
+        for (i in 0 until visibleCount) {
+            val title = composeRule.titleOfRow(UiTestTags.PlaylistSongRow, i)
+            require(!title.isNullOrBlank()) { "Empty title at filtered row $i" }
+            check(title.contains(needle, ignoreCase = true)) {
+                "Filtered row $i title '$title' doesn't contain needle '$needle'"
+            }
+        }
+
+        // Close search → field disappears, both rows return.
+        composeRule.onNodeWithTag(UiTestTags.PlaylistDetailSearchClose).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            !composeRule.hasNode(UiTestTags.PlaylistDetailSearchField) &&
+                composeRule.onAllNodesWithTag(UiTestTags.PlaylistSongRow).fetchSemanticsNodes().size == 2
         }
 
         // Cleanup
