@@ -1,6 +1,7 @@
 package com.migsmusic.ui
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -23,10 +24,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -48,6 +51,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -381,6 +386,10 @@ internal fun PlaylistDetailRoute(
     // order songs were added). Other options only change what's rendered — they don't mutate
     // playlist_songs.position, so picking DEFAULT always restores the canonical order.
     var contentSort by remember(playlistId) { mutableStateOf(PlaylistContentSortOrder.DEFAULT) }
+    // In-playlist filter. Per-playlist scope: leaving and returning resets it. Apple-Music-style:
+    // tap the search icon to swap the title for a search field, type to filter.
+    var searchActive by remember(playlistId) { mutableStateOf(false) }
+    var searchQuery by remember(playlistId) { mutableStateOf("") }
     // Cache the sorted view; re-runs only when the upstream list reference or the chosen
     // sort changes. Comparators use String.CASE_INSENSITIVE_ORDER instead of `.lowercase()`
     // selectors to avoid per-comparison string allocation under frequent re-sorts.
@@ -399,7 +408,31 @@ internal fun PlaylistDetailRoute(
                 PlaylistContentSortOrder.DURATION_DESC -> songsRaw.sortedByDescending { it.durationMs }
             }
         }
-    val canReorder = contentSort == PlaylistContentSortOrder.DEFAULT
+    // Filter the sorted view by the search query. Substring match across title + artist +
+    // album, matching the global Songs-tab search semantics. Cheap enough to run per
+    // keystroke — playlists are small relative to the global library.
+    val visibleSongs =
+        remember(songs, searchQuery) {
+            if (searchQuery.isBlank()) {
+                songs
+            } else {
+                val q = searchQuery.trim()
+                songs.filter {
+                    it.title.contains(q, ignoreCase = true) ||
+                        it.artist.contains(q, ignoreCase = true) ||
+                        it.album.contains(q, ignoreCase = true)
+                }
+            }
+        }
+    // Drag-to-reorder only makes sense in DEFAULT-sort, no-filter mode — otherwise the
+    // dragged index doesn't correspond to the underlying playlist position.
+    val canReorder = contentSort == PlaylistContentSortOrder.DEFAULT && searchQuery.isBlank()
+
+    // System-back closes the search field first; only the next press exits the playlist.
+    BackHandler(enabled = searchActive) {
+        searchActive = false
+        searchQuery = ""
+    }
 
     if (renameDialogVisible) {
         NameDialog(
@@ -427,129 +460,189 @@ internal fun PlaylistDetailRoute(
                     .padding(horizontal = 4.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
-            IconButton(
-                onClick = onGoBack,
-                modifier = Modifier.testTag(UiTestTags.PlaylistDetailBack),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to playlists")
-            }
-            Text(
-                text = playlistName,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(end = 8.dp),
-            )
-            IconButton(
-                onClick = { playlistsViewModel.playPlaylist(songs, 0, shuffle = false) },
-                enabled = songs.isNotEmpty(),
-                modifier = Modifier.testTag(UiTestTags.PlaylistDetailPlay),
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "Play playlist")
-            }
-            IconButton(
-                onClick = { playlistsViewModel.playPlaylist(songs, 0, shuffle = true) },
-                enabled = songs.isNotEmpty(),
-                modifier = Modifier.testTag(UiTestTags.PlaylistDetailShuffle),
-            ) {
-                Icon(Icons.Default.Shuffle, contentDescription = "Shuffle playlist")
-            }
-            SortMenu(
-                current = contentSort,
-                options = PlaylistContentSortOrder.entries,
-                labelOf = { it.label },
-                nameOf = { it.name },
-                onSelect = { contentSort = it },
-            )
-            Box {
+            if (searchActive) {
                 IconButton(
-                    onClick = { headerOverflowOpen = true },
-                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailOverflow),
+                    onClick = {
+                        searchActive = false
+                        searchQuery = ""
+                    },
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailSearchClose),
                 ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    Icon(Icons.Default.Close, contentDescription = "Close search")
                 }
-                DropdownMenu(
-                    expanded = headerOverflowOpen,
-                    onDismissRequest = { headerOverflowOpen = false },
+                val focusRequester = remember { FocusRequester() }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search in playlist") },
+                    singleLine = true,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                            .focusRequester(focusRequester)
+                            .testTag(UiTestTags.PlaylistDetailSearchField),
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { searchQuery = "" },
+                                modifier = Modifier.testTag(UiTestTags.PlaylistDetailSearchClear),
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                )
+                // Focus the field as soon as it appears so the keyboard pops up without an
+                // extra tap. Keyed on Unit because the field is only composed in search mode.
+                LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                IconButton(
+                    onClick = { playlistsViewModel.playPlaylist(visibleSongs, 0, shuffle = false) },
+                    enabled = visibleSongs.isNotEmpty(),
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailPlay),
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Rename") },
-                        onClick = {
-                            headerOverflowOpen = false
-                            renameDialogVisible = true
-                        },
-                        modifier = Modifier.testTag(UiTestTags.PlaylistDetailRename),
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Restore import order") },
-                        enabled = songs.isNotEmpty(),
-                        onClick = {
-                            headerOverflowOpen = false
-                            playlistsViewModel.restoreOriginalOrder(playlistId)
-                            snackbar.show("Restored to import order")
-                        },
-                        modifier = Modifier.testTag(UiTestTags.PlaylistDetailRestoreOrder),
-                    )
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Play matches")
+                }
+                IconButton(
+                    onClick = { playlistsViewModel.playPlaylist(visibleSongs, 0, shuffle = true) },
+                    enabled = visibleSongs.isNotEmpty(),
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailShuffle),
+                ) {
+                    Icon(Icons.Default.Shuffle, contentDescription = "Shuffle matches")
+                }
+            } else {
+                IconButton(
+                    onClick = onGoBack,
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailBack),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to playlists")
+                }
+                Text(
+                    text = playlistName,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                )
+                IconButton(
+                    onClick = { playlistsViewModel.playPlaylist(visibleSongs, 0, shuffle = false) },
+                    enabled = visibleSongs.isNotEmpty(),
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailPlay),
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Play playlist")
+                }
+                IconButton(
+                    onClick = { playlistsViewModel.playPlaylist(visibleSongs, 0, shuffle = true) },
+                    enabled = visibleSongs.isNotEmpty(),
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailShuffle),
+                ) {
+                    Icon(Icons.Default.Shuffle, contentDescription = "Shuffle playlist")
+                }
+                SortMenu(
+                    current = contentSort,
+                    options = PlaylistContentSortOrder.entries,
+                    labelOf = { it.label },
+                    nameOf = { it.name },
+                    onSelect = { contentSort = it },
+                )
+                IconButton(
+                    onClick = { searchActive = true },
+                    modifier = Modifier.testTag(UiTestTags.PlaylistDetailSearch),
+                ) {
+                    Icon(Icons.Default.Search, contentDescription = "Search in playlist")
+                }
+                Box {
+                    IconButton(
+                        onClick = { headerOverflowOpen = true },
+                        modifier = Modifier.testTag(UiTestTags.PlaylistDetailOverflow),
+                    ) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    }
+                    DropdownMenu(
+                        expanded = headerOverflowOpen,
+                        onDismissRequest = { headerOverflowOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            onClick = {
+                                headerOverflowOpen = false
+                                renameDialogVisible = true
+                            },
+                            modifier = Modifier.testTag(UiTestTags.PlaylistDetailRename),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Restore import order") },
+                            enabled = songs.isNotEmpty(),
+                            onClick = {
+                                headerOverflowOpen = false
+                                playlistsViewModel.restoreOriginalOrder(playlistId)
+                                snackbar.show("Restored to import order")
+                            },
+                            modifier = Modifier.testTag(UiTestTags.PlaylistDetailRestoreOrder),
+                        )
+                    }
                 }
             }
         }
-        if (songs.isNotEmpty()) {
+        if (visibleSongs.isNotEmpty()) {
             Text(
-                text = formatCountAndDuration(songs.size, songs.sumOf { it.durationMs }),
+                text = formatCountAndDuration(visibleSongs.size, visibleSongs.sumOf { it.durationMs }),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(start = 56.dp, end = 16.dp, bottom = 4.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (songs.isEmpty()) {
-            EmptyState("This playlist is empty.\nAdd songs from the Songs tab.")
-            return@Column
-        }
-        val playlistLazyState = rememberLazyListState()
-        val playlistReorderState =
-            rememberReorderableLazyListState(playlistLazyState) { from, to ->
-                if (from.index in songs.indices && to.index in songs.indices && from.index != to.index) {
-                    playlistsViewModel.moveSong(playlistId, from.index, to.index)
-                }
-            }
-        LazyColumn(state = playlistLazyState, modifier = Modifier.fillMaxSize()) {
-            itemsIndexed(songs, key = { _, item -> item.playlistItemId }) { index, song ->
-                val onPlay =
-                    remember(index, songs) {
-                        { playlistsViewModel.playPlaylist(songs, index, shuffle = false) }
-                    }
-                val onRemove =
-                    remember(song.playlistItemId) {
-                        { playlistsViewModel.removeSong(song.playlistItemId) }
-                    }
-                val onNext =
-                    remember(song.songId) {
-                        {
-                            playlistsViewModel.addSongToQueueNext(song.songId)
-                            snackbar.show("Added to queue")
+        when {
+            songs.isEmpty() -> EmptyState("This playlist is empty.\nAdd songs from the Songs tab.")
+            visibleSongs.isEmpty() -> EmptyState("No songs match \"${searchQuery.trim()}\".")
+            else -> {
+                val playlistLazyState = rememberLazyListState()
+                val playlistReorderState =
+                    rememberReorderableLazyListState(playlistLazyState) { from, to ->
+                        if (from.index in visibleSongs.indices && to.index in visibleSongs.indices && from.index != to.index) {
+                            playlistsViewModel.moveSong(playlistId, from.index, to.index)
                         }
                     }
-                val onLater =
-                    remember(song.songId) {
-                        {
-                            playlistsViewModel.addSongToQueueLater(song.songId)
-                            snackbar.show("Added to queue")
+                LazyColumn(state = playlistLazyState, modifier = Modifier.fillMaxSize()) {
+                    itemsIndexed(visibleSongs, key = { _, item -> item.playlistItemId }) { index, song ->
+                        val onPlay =
+                            remember(index, visibleSongs) {
+                                { playlistsViewModel.playPlaylist(visibleSongs, index, shuffle = false) }
+                            }
+                        val onRemove =
+                            remember(song.playlistItemId) {
+                                { playlistsViewModel.removeSong(song.playlistItemId) }
+                            }
+                        val onNext =
+                            remember(song.songId) {
+                                {
+                                    playlistsViewModel.addSongToQueueNext(song.songId)
+                                    snackbar.show("Added to queue")
+                                }
+                            }
+                        val onLater =
+                            remember(song.songId) {
+                                {
+                                    playlistsViewModel.addSongToQueueLater(song.songId)
+                                    snackbar.show("Added to queue")
+                                }
+                            }
+                        ReorderableItem(playlistReorderState, key = song.playlistItemId) { _ ->
+                            PlaylistSongRow(
+                                song = song,
+                                isCurrent = song.songId == currentSongId,
+                                onPlay = onPlay,
+                                onRemove = onRemove,
+                                onPlayNext = onNext,
+                                onPlayLater = onLater,
+                                // Drag handle only appears in default order — dragging while sorted
+                                // by something else would mutate position invisibly under a sorted view.
+                                dragHandleModifier = if (canReorder) Modifier.draggableHandle() else null,
+                            )
                         }
+                        HorizontalDivider()
                     }
-                ReorderableItem(playlistReorderState, key = song.playlistItemId) { _ ->
-                    PlaylistSongRow(
-                        song = song,
-                        isCurrent = song.songId == currentSongId,
-                        onPlay = onPlay,
-                        onRemove = onRemove,
-                        onPlayNext = onNext,
-                        onPlayLater = onLater,
-                        // Drag handle only appears in default order — dragging while sorted
-                        // by something else would mutate position invisibly under a sorted view.
-                        dragHandleModifier = if (canReorder) Modifier.draggableHandle() else null,
-                    )
                 }
-                HorizontalDivider()
             }
         }
     }
