@@ -336,11 +336,10 @@ class AutoImportService(
      * Android's media scanner only picks them up lazily, so a just-pushed track can be on
      * disk yet absent from the library, and the import would silently drop it.
      *
-     * If any referenced path is missing from the [index], run a MediaScanner pass over
-     * every referenced track (registering them with MediaStore), refresh Room from
-     * MediaStore, and return a rebuilt index. When every referenced track is already
-     * covered — the common no-op resync — the passed-in index is returned untouched and
-     * nothing is scanned.
+     * For any referenced path the [index] doesn't already know, run a MediaScanner pass
+     * (which registers it with MediaStore), refresh Room from MediaStore, and return a
+     * rebuilt index. When every referenced track is already covered — the common no-op
+     * resync — the passed-in index is returned untouched and nothing is scanned.
      */
     private suspend fun ensureLibraryCovers(
         files: List<DiscoveredM3u>,
@@ -358,16 +357,8 @@ class AutoImportService(
         val unindexed = referenced.filterNot { it in index.byAbsolutePath }
         if (unindexed.isEmpty()) return index
 
-        // At least one referenced track is missing, so a refresh is needed. scanDevice()
-        // rebuilds Room straight from MediaStore — dropping anything on disk that isn't
-        // currently in MediaStore — so scan EVERY referenced path first, not just the
-        // ones missing from the index, otherwise that rebuild can lose other tracks.
-        Log.i(
-            TAG,
-            "ensureLibraryCovers: ${unindexed.size} of ${referenced.size} referenced " +
-                "track(s) not in library — rescanning",
-        )
-        scanPaths(referenced)
+        Log.i(TAG, "ensureLibraryCovers: ${unindexed.size} referenced track(s) not in library — scanning")
+        scanPaths(unindexed)
         runCatching { libraryRepository.scanDevice() }
             .onFailure { Log.w(TAG, "post-scan scanDevice failed", it) }
         return M3uMatcherIndex(libraryRepository.getAllSongsOnce())
