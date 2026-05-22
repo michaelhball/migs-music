@@ -282,6 +282,11 @@ class AutoImportService(
                     matchM3uEntries(parseM3u(content), index)
                 }
             val newSongIds = matchResult.matched.map { it.song.id }
+            // The playlist write goes by absolutePath, not id: ids churn when MediaStore
+            // re-reads tags, and a stale id silently drops the song (see
+            // PlaylistRepository.upsertSyncedPlaylist). newSongIds is still used below for
+            // the id-keyed orphan-cleanup diff.
+            val newSongPaths = matchResult.matched.map { it.song.absolutePath }
             Log.i(
                 TAG,
                 "${file.displayName}: matched=${matchResult.matched.size} unmatched=${matchResult.unmatched.size}",
@@ -298,8 +303,8 @@ class AutoImportService(
             val priorSongIds: Set<Long> =
                 if (existing != null) playlistRepository.getPlaylistSongIds(existing.id) else emptySet()
 
-            val playlistId = playlistRepository.upsertSyncedPlaylist(playlistName, newSongIds)
-            Log.i(TAG, "  upserted playlist id=$playlistId with ${newSongIds.size} song(s)")
+            val playlistId = playlistRepository.upsertSyncedPlaylist(playlistName, newSongPaths)
+            Log.i(TAG, "  upserted playlist id=$playlistId with ${newSongPaths.size} song(s)")
 
             // Per-song orphan cleanup: songs that were in the playlist before this sync but
             // aren't anymore, AND aren't referenced by any other playlist (synced or manual).

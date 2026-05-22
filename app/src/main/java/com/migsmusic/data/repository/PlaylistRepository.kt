@@ -177,8 +177,15 @@ class PlaylistRepository(
 
     /**
      * Sync upsert: if a synced (Mac-mirrored) playlist named [name] already exists, replace
-     * its contents with [songIds] (preserving the playlist row itself so any UI state
-     * keyed on its id stays valid). Otherwise, create a new synced playlist.
+     * its contents with [songAbsolutePaths] (preserving the playlist row itself so any UI
+     * state keyed on its id stays valid). Otherwise, create a new synced playlist.
+     *
+     * Takes absolute paths rather than `_ID`s on purpose. The M3U import resolves matches
+     * to songs up front, but MediaStore reassigns `_ID`s whenever it re-reads a file's
+     * tags — so an id can go stale between the match and this write (a background library
+     * rescan landing in between), which silently dropped songs from the playlist.
+     * `absolutePath` is the stable cross-table key (it IS the playlist_songs FK target),
+     * so carrying it straight through can't be invalidated by id churn.
      *
      * Manual playlists with the same name are NOT matched — they're separate rows the user
      * created on the phone, untouched by sync.
@@ -187,24 +194,29 @@ class PlaylistRepository(
      */
     suspend fun upsertSyncedPlaylist(
         name: String,
-        songIds: List<Long>,
+        songAbsolutePaths: List<String>,
     ): Long {
         val trimmed = name.trim()
         val existing = playlistDao.findSyncedPlaylistByName(trimmed)
-        if (existing != null) {
-            playlistDao.clearPlaylistSongs(existing.id)
-            val pathById =
-                songDao.resolveAbsolutePaths(songIds).associateBy({ it.songId }, { it.absolutePath })
-            for (songId in songIds) {
-                val path = pathById[songId] ?: continue
-                addSongByPath(existing.id, path)
+        val playlistId =
+            if (existing != null) {
+                playlistDao.clearPlaylistSongs(existing.id)
+                existing.id
+            } else {
+                createPlaylist(trimmed, syncedFromMac = true)
             }
+        for (path in songAbsolutePaths) {
+            // A path whose songs row was deleted out from under us — a file that left
+            // MediaStore mid-import — would fail the playlist_songs FK; skip it rather
+            // than aborting the whole playlist.
+            runCatching { addSongByPath(playlistId, path) }
+        }
+        if (existing != null) {
             playlistDao.updatePlaylist(
                 existing.copy(updatedAtMillis = System.currentTimeMillis()),
             )
-            return existing.id
         }
-        return createPlaylistWithSongs(trimmed, songIds, syncedFromMac = true)
+        return playlistId
     }
 
     suspend fun hasOriginalOrder(playlistId: Long): Boolean = playlistDao.hasOriginalOrder(playlistId)
