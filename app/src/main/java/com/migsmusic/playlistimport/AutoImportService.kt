@@ -1,15 +1,20 @@
 package com.migsmusic.playlistimport
 
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.util.Log
 import com.migsmusic.data.OrphanAudioTracker
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.resume
 
 /**
  * Aggregate result of an auto-import batch. [unprocessed] is everything that didn't get
@@ -67,22 +72,13 @@ class AutoImportService(
     private suspend fun importAllLocked(): ImportSummary {
         val files = scanForM3uFiles()
         Log.i(TAG, "importAll: ${files.size} m3u file(s) found in $SYNC_DIR_PATH")
-        // Force a fresh MediaStore → Room scan before reading the library snapshot. The Mac
-        // sync flow pushes audio files via adb and broadcasts AUTO_IMPORT immediately after,
-        // so without this step `observeAllSongs().first()` may return a stale view that's
-        // missing the just-pushed tracks (LibrarySyncObserver's debounced auto-rescan hasn't
-        // fired yet, and the deprecated MEDIA_SCANNER_SCAN_FILE broadcast no-ops on Android 11+).
-        //
-        // Skip the rescan when the sync-stats sidecar (written by the Mac script) reports
-        // audioPushed=0. On no-op resyncs (m3u-only changes — reorder, song removal,
-        // contents-already-on-phone) we don't need to touch MediaStore at all. ~3-4s saved
-        // on a 2000-song library; a meaningful chunk of the perceived sync time.
+        // Consume the sync-stats sidecar the Mac script leaves behind. Its audioPushed
+        // count is logged for diagnostics only — it used to gate the library refresh, but
+        // that was unsafe: a track can be on disk yet absent from MediaStore regardless of
+        // what THIS sync pushed (an earlier interrupted sync, lazy background indexing).
+        // ensureLibraryCovers decides the refresh from what the .m3u files actually need.
         val stats = readSyncStats()
-        val needsRescan = stats?.audioPushed != 0
-        if (needsRescan) {
-            runCatching { libraryRepository.scanDevice() }
-                .onFailure { Log.w(TAG, "pre-import scanDevice failed", it) }
-        }
+        Log.i(TAG, "importAll: sync reported ${stats?.audioPushed ?: "?"} audio file(s) pushed")
 
         // Read the sync manifest BEFORE per-file imports so we can honor the deleteOrphans
         // flag during each per-playlist replace — when an existing synced playlist's
@@ -99,9 +95,10 @@ class AutoImportService(
             // Snapshot the library + build the matcher index ONCE, then reuse for every file.
             // Each file's matcher pass would otherwise rebuild three maps over the full library
             // — for a Mac sync landing 10 m3u's against a 5k-song library that's 30 redundant
-            // associateBy passes.
-            val library = libraryRepository.getAllSongsOnce()
-            val index = M3uMatcherIndex(library)
+            // associateBy passes. ensureLibraryCovers rebuilds it if the .m3u files reference
+            // tracks the snapshot doesn't yet know about.
+            val index =
+                ensureLibraryCovers(files, M3uMatcherIndex(libraryRepository.getAllSongsOnce()))
             for (file in files) {
                 when (val outcome = autoImportSingleFile(file, index, deleteOrphans)) {
                     SingleFileOutcome.Imported -> imported++
@@ -333,7 +330,72 @@ class AutoImportService(
             SingleFileOutcome.Failed(it.message ?: it.javaClass.simpleName)
         }
 
+    /**
+     * Ensures the library [index] covers every track path referenced by [files]. The Mac
+     * sync lands audio with adb/tar, which does NOT register files with MediaStore —
+     * Android's media scanner only picks them up lazily, so a just-pushed track can be on
+     * disk yet absent from the library, and the import would silently drop it.
+     *
+     * For any referenced path the [index] doesn't already know, run a MediaScanner pass
+     * (which registers it with MediaStore), refresh Room from MediaStore, and return a
+     * rebuilt index. When every referenced track is already covered — the common no-op
+     * resync — the passed-in index is returned untouched and nothing is scanned.
+     */
+    private suspend fun ensureLibraryCovers(
+        files: List<DiscoveredM3u>,
+        index: M3uMatcherIndex,
+    ): M3uMatcherIndex {
+        val referenced =
+            withContext(Dispatchers.IO) {
+                files
+                    .mapNotNull { f -> runCatching { File(f.absolutePath).readText() }.getOrNull() }
+                    .flatMap { content -> parseM3u(content) }
+                    .map { it.rawPath }
+                    .filter { it.isNotEmpty() }
+                    .toSet()
+            }
+        val unindexed = referenced.filterNot { it in index.byAbsolutePath }
+        if (unindexed.isEmpty()) return index
+
+        Log.i(TAG, "ensureLibraryCovers: ${unindexed.size} referenced track(s) not in library — scanning")
+        scanPaths(unindexed)
+        runCatching { libraryRepository.scanDevice() }
+            .onFailure { Log.w(TAG, "post-scan scanDevice failed", it) }
+        return M3uMatcherIndex(libraryRepository.getAllSongsOnce())
+    }
+
+    /**
+     * Runs a MediaScanner pass over [paths] and suspends until every file has been scanned
+     * (or [SCAN_TIMEOUT_MS] elapses — a stuck scan must not hang the import forever).
+     * MediaScanner resolves /sdcard symlinks itself, but we normalise to the canonical
+     * /storage/emulated/0 form it stores paths under regardless.
+     */
+    private suspend fun scanPaths(paths: Collection<String>) {
+        if (paths.isEmpty()) return
+        val canonical =
+            paths
+                .map {
+                    if (it.startsWith(SDCARD_PREFIX)) {
+                        STORAGE_EMULATED_PREFIX + it.removePrefix(SDCARD_PREFIX)
+                    } else {
+                        it
+                    }
+                }
+                .toTypedArray()
+        withTimeoutOrNull(SCAN_TIMEOUT_MS) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                val remaining = AtomicInteger(canonical.size)
+                MediaScannerConnection.scanFile(context, canonical, null) { _, _ ->
+                    if (remaining.decrementAndGet() == 0 && cont.isActive) cont.resume(Unit)
+                }
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "AutoImportService"
+        const val SCAN_TIMEOUT_MS = 120_000L
+        const val SDCARD_PREFIX = "/sdcard/"
+        const val STORAGE_EMULATED_PREFIX = "/storage/emulated/0/"
     }
 }
