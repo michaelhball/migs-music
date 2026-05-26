@@ -677,18 +677,29 @@ class PlaybackManager(
             // secondary is, so playback continues seamlessly. Secondary keeps emitting
             // through main's audio-renderer flush — that's what covers the otherwise
             // perceptible silent moment.
+            //
+            // Critical: we keep main muted across the warmup window and atomically
+            // swap (secondary off, main vol=1) at the END. Bringing main up to full
+            // volume immediately after the seek causes a brief overlap where both
+            // players are emitting the same track ~50ms apart, which comb-filters
+            // into an audible flicker right at the transition.
             withContext(Dispatchers.Main.immediate) {
                 if (player.currentMediaItemIndex < nextIndex) {
                     player.seekToNextMediaItem()
                 }
                 val secondaryPos = secondary.currentPosition.coerceAtLeast(0L)
                 player.seekTo(secondaryPos)
-                player.volume = 1f
+                // Main stays at volume 0 — see the note above. Its renderer keeps
+                // chunking decoded samples through this window even at zero gain, so
+                // by the time we unmute below the audio output is already warm.
             }
             delay(AUDIO_HANDOFF_DELAY_MS)
             withContext(Dispatchers.Main.immediate) {
+                // Atomic swap in a single Main.immediate tick: kill secondary first
+                // so its trailing samples don't overlap, then unmute main.
                 secondary.stop()
                 secondary.clearMediaItems()
+                player.volume = 1f
             }
         } finally {
             withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main.immediate) {
