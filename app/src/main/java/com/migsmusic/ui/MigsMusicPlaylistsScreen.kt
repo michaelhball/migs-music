@@ -398,6 +398,7 @@ internal fun PlaylistDetailRoute(
             val ci: Comparator<String> = String.CASE_INSENSITIVE_ORDER
             when (contentSort) {
                 PlaylistContentSortOrder.DEFAULT -> songsRaw
+                PlaylistContentSortOrder.DEFAULT_DESC -> songsRaw.reversed()
                 PlaylistContentSortOrder.TITLE_ASC ->
                     songsRaw.sortedWith(compareBy<PlaylistSong, String>(ci) { it.title })
                 PlaylistContentSortOrder.TITLE_DESC ->

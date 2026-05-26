@@ -54,6 +54,7 @@ enum class PlaylistSortOrder(val label: String) {
  */
 enum class PlaylistContentSortOrder(val label: String) {
     DEFAULT("Default order"),
+    DEFAULT_DESC("Newest first"),
     TITLE_ASC("Title A→Z"),
     TITLE_DESC("Title Z→A"),
     ARTIST_ASC("Artist A→Z"),
