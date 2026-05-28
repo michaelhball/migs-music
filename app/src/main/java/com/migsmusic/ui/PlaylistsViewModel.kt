@@ -87,6 +87,14 @@ class PlaylistsViewModel(
         preferences.playlistSortOrder = order
     }
 
+    fun playlistContentSortOrder(playlistId: Long): PlaylistContentSortOrder =
+        preferences.playlistContentSortOrder(playlistId)
+
+    fun setPlaylistContentSortOrder(
+        playlistId: Long,
+        order: PlaylistContentSortOrder,
+    ) = preferences.setPlaylistContentSortOrder(playlistId, order)
+
     private fun sortPlaylists(
         items: List<PlaylistSummary>,
         order: PlaylistSortOrder,

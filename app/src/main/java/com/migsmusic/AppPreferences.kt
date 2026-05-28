@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.migsmusic.ui.AlbumSortOrder
 import com.migsmusic.ui.ArtistSortOrder
+import com.migsmusic.ui.PlaylistContentSortOrder
 import com.migsmusic.ui.PlaylistSortOrder
 import com.migsmusic.ui.SongSortOrder
 
@@ -53,6 +54,19 @@ class AppPreferences(context: Context) {
                 ?.let { name -> runCatching { PlaylistSortOrder.valueOf(name) }.getOrNull() }
                 ?: PlaylistSortOrder.NAME_ASC
         set(value) = prefs.edit { putString(KEY_PLAYLIST_SORT, value.name) }
+
+    /** Per-playlist content sort, persisted so leaving and re-entering a playlist keeps it. */
+    fun playlistContentSortOrder(playlistId: Long): PlaylistContentSortOrder =
+        prefs.getString(playlistContentSortKey(playlistId), null)
+            ?.let { name -> runCatching { PlaylistContentSortOrder.valueOf(name) }.getOrNull() }
+            ?: PlaylistContentSortOrder.DEFAULT
+
+    fun setPlaylistContentSortOrder(
+        playlistId: Long,
+        value: PlaylistContentSortOrder,
+    ) = prefs.edit { putString(playlistContentSortKey(playlistId), value.name) }
+
+    private fun playlistContentSortKey(playlistId: Long) = "$KEY_PLAYLIST_CONTENT_SORT_PREFIX$playlistId"
 
     var shuffleEnabled: Boolean
         get() = prefs.getBoolean(KEY_SHUFFLE, false)
@@ -106,6 +120,7 @@ class AppPreferences(context: Context) {
         const val KEY_ARTIST_SORT = "artist_sort_order"
         const val KEY_ARTIST_DETAIL_SONG_SORT = "artist_detail_song_sort_order"
         const val KEY_PLAYLIST_SORT = "playlist_sort_order"
+        const val KEY_PLAYLIST_CONTENT_SORT_PREFIX = "playlist_content_sort_"
         const val KEY_SHUFFLE = "shuffle_enabled"
         const val KEY_CONFIRM_QUEUE_JUMP = "confirm_queue_jump"
         const val KEY_CROSSFADE_MS = "crossfade_ms"

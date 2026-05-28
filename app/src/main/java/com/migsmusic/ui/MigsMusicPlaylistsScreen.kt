@@ -385,7 +385,12 @@ internal fun PlaylistDetailRoute(
     // Display-only sort. DEFAULT preserves position order (the M3U import order, or the
     // order songs were added). Other options only change what's rendered — they don't mutate
     // playlist_songs.position, so picking DEFAULT always restores the canonical order.
-    var contentSort by remember(playlistId) { mutableStateOf(PlaylistContentSortOrder.DEFAULT) }
+    // Per-playlist sort, persisted via AppPreferences. Initial read keyed on playlistId so
+    // navigating between playlists picks up the right saved value; subsequent changes write
+    // through to preferences so leaving and returning to this screen keeps the choice.
+    var contentSort by remember(playlistId) {
+        mutableStateOf(playlistsViewModel.playlistContentSortOrder(playlistId))
+    }
     // In-playlist filter. Per-playlist scope: leaving and returning resets it. Apple-Music-style:
     // tap the search icon to swap the title for a search field, type to filter.
     var searchActive by remember(playlistId) { mutableStateOf(false) }
@@ -544,7 +549,10 @@ internal fun PlaylistDetailRoute(
                     options = PlaylistContentSortOrder.entries,
                     labelOf = { it.label },
                     nameOf = { it.name },
-                    onSelect = { contentSort = it },
+                    onSelect = {
+                        contentSort = it
+                        playlistsViewModel.setPlaylistContentSortOrder(playlistId, it)
+                    },
                 )
                 IconButton(
                     onClick = { searchActive = true },
