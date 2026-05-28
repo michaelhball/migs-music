@@ -454,6 +454,14 @@ class PlaybackManager(
             cancelCrossfade()
             player.pause()
         } else {
+            // After the OS kills the playback process and the user reopens the app,
+            // restoreLastSession seeds the queue and calls prepare(), but on some
+            // devices the player can still come back in STATE_IDLE (e.g. a deferred
+            // prepare that errored silently, or the renderer being torn down by the
+            // service stop). play() in IDLE is a no-op — re-prepare so the tap works.
+            if (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0) {
+                player.prepare()
+            }
             player.play()
         }
     }
