@@ -989,6 +989,15 @@ class PlaybackManager(
                     .setTitle(song.title)
                     .setArtist(song.artist)
                     .setAlbumTitle(song.album)
+                    // Populate the "display" fields alongside the technical ones. Some
+                    // system-media surfaces (notably OEM lock screens) prefer displayTitle
+                    // over title and subtitle over artist; if only the technical fields are
+                    // set they render the title line blank while still showing the artist
+                    // (which they read from artist directly). Setting both keeps every
+                    // consumer happy without changing what the user sees on surfaces that
+                    // already worked.
+                    .setDisplayTitle(song.title)
+                    .setSubtitle(song.artist)
                     // Deliberately NOT calling setArtworkUri here. The system's bitmap
                     // loader on some OEMs (OnePlus in particular) silently fails to resolve
                     // the MediaStore album-art URI from a background context — and once it
