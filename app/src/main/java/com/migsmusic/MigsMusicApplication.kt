@@ -73,6 +73,7 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
             PlaybackManager(
                 context = applicationContext,
                 libraryRepository = libraryRepository,
+                playlistRepository = playlistRepository,
                 sessionRepository = playbackSessionRepository,
                 preferences = preferences,
             )

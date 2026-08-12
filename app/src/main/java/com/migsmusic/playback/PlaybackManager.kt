@@ -21,6 +21,7 @@ import com.migsmusic.MainActivity
 import com.migsmusic.data.local.entity.SongEntity
 import com.migsmusic.data.repository.LibraryRepository
 import com.migsmusic.data.repository.PlaybackSessionRepository
+import com.migsmusic.data.repository.PlaylistRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +42,7 @@ import kotlin.coroutines.resume
 class PlaybackManager(
     context: Context,
     private val libraryRepository: LibraryRepository,
+    private val playlistRepository: PlaylistRepository,
     private val sessionRepository: PlaybackSessionRepository,
     private val preferences: AppPreferences,
 ) : PlaybackController {
@@ -62,13 +64,17 @@ class PlaybackManager(
     private var mediaSession: MediaLibrarySession? = null
 
     /**
-     * Callback for the [MediaLibrarySession]. Serves the browse tree that Android Auto and
-     * other MediaBrowser clients read from, and resolves incoming play requests (which arrive
-     * with just a mediaId — no URI) into real playable [MediaItem]s. Filled in by follow-up
-     * commits; the empty defaults here return `RESULT_ERROR_NOT_SUPPORTED` for browse
-     * operations, which is fine while no external browser is connected.
+     * Serves the MediaBrowser browse tree to external clients (Android Auto, Bluetooth AVRCP
+     * with browse support). Resolves song taps into full playable queues on our shared
+     * [Player] via [prepareExternalQueue] so skip-next / auto-advance work.
      */
-    private val libraryCallback = object : MediaLibrarySession.Callback {}
+    private val libraryCallback =
+        MediaBrowseTree(
+            libraryRepository = libraryRepository,
+            playlistRepository = playlistRepository,
+            scope = scope,
+            prepareExternalQueue = ::prepareExternalQueue,
+        )
 
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
@@ -340,6 +346,35 @@ class PlaybackManager(
                     shuffle = effectiveShuffle,
                 ) ?: return@launch
             syncPlayer(queueState = queueState, startPositionMs = 0L, playWhenReady = true)
+        }
+    }
+
+    /**
+     * Called by [MediaBrowseTree] when Android Auto (or another external MediaBrowser client)
+     * picks a song to play. Populates [queueEngine] + the song-metadata cache and publishes
+     * the UI state, but deliberately does **not** call `player.setMediaItems` — the caller
+     * hands the resolved items back to Media3, which then does the setMediaItems + prepare +
+     * play sequence itself. By populating queueEngine first with the matching entryIds, the
+     * subsequent `Player.Listener.onMediaItemTransition` finds a consistent queue and the
+     * mini-player / full player UI stays in sync with what's coming out of the speakers.
+     *
+     * Returns the queue entries in playback order so the caller can build player-facing
+     * [MediaItem]s using the same entryIds — essential for the listener's lookup to hit.
+     */
+    suspend fun prepareExternalQueue(
+        songIds: List<Long>,
+        startIndex: Int,
+    ): List<QueueEntry> {
+        // No shuffle for external playback — Auto controls its own shuffle toggle via the
+        // player's shuffleModeEnabled command, not by rebuilding the queue.
+        val songsById = loadSongsById(songIds)
+        return withContext(Dispatchers.Main.immediate) {
+            queueSongCache = songsById
+            val state = queueEngine.startContext(songIds, startIndex, shuffle = false) ?: return@withContext emptyList()
+            ensureServiceStarted()
+            publishUiState()
+            persistSnapshot()
+            state.effectiveQueue
         }
     }
 
