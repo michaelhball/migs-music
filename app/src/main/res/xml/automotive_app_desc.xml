@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Declares migs music as a media-capable app to Android Auto.
+
+    `name="media"` = we serve a MediaBrowserService (via Media3's MediaLibraryService)
+    that Auto binds to for its browse UI. No `<uses name="notification"/>` — Auto renders
+    its own notification for media apps; we don't want to opt into custom notification UI.
+-->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

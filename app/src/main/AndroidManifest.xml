@@ -18,6 +18,15 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.MigsMusic">
+        <!--
+            Advertises the app to Android Auto as a media-capable app. Auto reads this
+            meta-data on app install, sees `<uses name="media"/>` in the referenced XML,
+            and lists us in its media-app picker. Without this the app is completely
+            invisible to Auto no matter how well the browse tree is implemented.
+        -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
