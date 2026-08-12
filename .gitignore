@@ -44,11 +44,9 @@ Thumbs.db
 .claude/
 CLAUDE.local.md
 
-# Workspace logs (smoke runs, baseline) — actual notes are kept; raw logs aren't.
-workspace/baseline.log
-workspace/smoke-run-*.log
-# Workspace backup notes — contain references to where private files live on disk.
-workspace/KEYSTORE_BACKUPS.md
+# Local-only planning / notes / logs / experiments. Anything in workspace/ is
+# scratch that shouldn't leave the machine — matches the sibling repo's rule.
+workspace/
 
 # Test reports
 app/test-results/
