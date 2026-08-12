@@ -14,8 +14,8 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import com.migsmusic.AppPreferences
 import com.migsmusic.MainActivity
 import com.migsmusic.data.local.entity.SongEntity
@@ -59,7 +59,16 @@ class PlaybackManager(
             )
             .build()
     private val queueEngine = QueueEngine()
-    private var mediaSession: MediaSession? = null
+    private var mediaSession: MediaLibrarySession? = null
+
+    /**
+     * Callback for the [MediaLibrarySession]. Serves the browse tree that Android Auto and
+     * other MediaBrowser clients read from, and resolves incoming play requests (which arrive
+     * with just a mediaId — no URI) into real playable [MediaItem]s. Filled in by follow-up
+     * commits; the empty defaults here return `RESULT_ERROR_NOT_SUPPORTED` for browse
+     * operations, which is fine while no external browser is connected.
+     */
+    private val libraryCallback = object : MediaLibrarySession.Callback {}
 
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
@@ -285,7 +294,7 @@ class PlaybackManager(
         }
     }
 
-    fun getOrCreateMediaSession(service: MediaSessionService): MediaSession {
+    fun getOrCreateMediaSession(service: MediaLibraryService): MediaLibrarySession {
         mediaSession?.let { return it }
         // setSessionActivity wires up the lock-screen / system-media widget so tapping
         // the body of the now-playing card opens our app at MainActivity. Without it the
@@ -302,7 +311,7 @@ class PlaybackManager(
                 launchIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-        return MediaSession.Builder(service, player)
+        return MediaLibrarySession.Builder(service, player, libraryCallback)
             .setSessionActivity(sessionActivity)
             .build()
             .also { mediaSession = it }

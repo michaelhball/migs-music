@@ -9,8 +9,9 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import com.migsmusic.MainActivity
 import com.migsmusic.MigsMusicApplication
 import com.migsmusic.R
@@ -22,11 +23,11 @@ import com.migsmusic.R
  * Media3's DefaultMediaNotificationProvider replaces this notification once playback
  * begins; we use the same notification ID so the swap is in-place.
  */
-class MediaPlaybackService : MediaSessionService() {
+class MediaPlaybackService : MediaLibraryService() {
     private val playbackManager: PlaybackManager
         get() = (application as MigsMusicApplication).appContainer.playbackManager
 
-    private lateinit var mediaSession: MediaSession
+    private lateinit var mediaSession: MediaLibrarySession
 
     override fun onCreate() {
         super.onCreate()
@@ -57,7 +58,7 @@ class MediaPlaybackService : MediaSessionService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // User swiped the app away from Recents. Stop playback so audio doesn't keep
