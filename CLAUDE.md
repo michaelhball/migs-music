@@ -34,13 +34,24 @@ If something fails after a push (e.g. a smoke run finds a regression), patch wit
 - **No mocks for the database** — tests hit real Room. Confidence in migrations beats test speed.
 - **Schema changes go through migrations**, not destructive fallback. See `MIGRATION_2_3` in `AppDatabase.kt` for the pattern.
 
+## Debug vs release on the phone
+
+Debug builds install as a **separate app**: `com.migsmusic.debug`, labelled "migs music dev".
+The release install (`com.migsmusic`, signed by CI — see `.claude/skills/release-to-phone`)
+is never replaced or wiped by `installDebug` or the smoke script. The Mac sync app only
+targets the release package; to get playlists into a debug build run
+`scripts/sync-debug-playlists.sh` (replays the Mac app's sync against the debug package,
+never deletes audio).
+
 ## Useful commands
 
 ```bash
 ./gradlew :app:compileDebugKotlin                    # quickest sanity check
 ./gradlew :app:testDebugUnitTest                     # unit tests (no device)
 ./gradlew :app:installDebug                          # install onto a connected device
-scripts/device-smoke-test.sh                         # full instrumented suite
+scripts/device-smoke-test.sh                         # full instrumented suite (debug app only)
+scripts/sync-debug-playlists.sh                      # Mac-app playlists → the debug build
+scripts/release-to-phone.sh 0.3.0                    # tag, CI-signed build, install release
 ./gradlew :app:ktlintCheck                           # lint
 ./gradlew :app:ktlintFormat                          # auto-fix lint
 ```
