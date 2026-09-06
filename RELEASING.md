@@ -44,6 +44,16 @@ When you create the Play Console listing, opt into **Play App Signing**. Google 
 - Add screenshots: 2–8 phone, plus a 1024×500 feature graphic.
 - Set up Internal testing track, add yourself as a tester.
 
+## Fastest path: release straight to the phone
+
+```bash
+scripts/release-to-phone.sh 0.2.0          # bump, tag, wait for CI, download APK, adb install
+```
+
+Uses the GitHub-built signed APK, so it works from any computer with `gh` logged in — no
+local keystore needed. See `.claude/skills/release-to-phone/SKILL.md` for the caveats
+(debug-signed phone installs need `--replace`, which wipes app data).
+
 ## Each release
 
 ```bash

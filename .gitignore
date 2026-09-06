@@ -41,7 +41,9 @@ Thumbs.db
 *~
 
 # Claude Code per-session state
-.claude/
+# Keep skills in the repo; everything else under .claude/ is per-machine.
+.claude/*
+!.claude/skills/
 CLAUDE.local.md
 
 # Local-only planning / notes / logs / experiments. Anything in workspace/ is
