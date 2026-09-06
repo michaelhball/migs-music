@@ -8,7 +8,7 @@ description: Cut a tagged release built and signed by GitHub Actions, download t
 Everything is driven by one script; run it rather than reproducing the steps:
 
 ```bash
-scripts/release-to-phone.sh <version> [--replace] [--no-install]
+scripts/release-to-phone.sh <version> [--replace] [--no-install] [--install-only]
 ```
 
 It bumps `versionCode`/`versionName`, runs lint + unit tests, commits, tags `v<version>`,
@@ -25,6 +25,12 @@ is needed and this works from any computer.
    for fixes, minor for features. Never reuse a tag.
 4. Phone plugged in, USB mode "File transfer", USB debugging accepted (`adb devices`
    must list it as `device`). Without a phone, use `--no-install` and hand over the APK.
+
+## Installing a release that already exists
+
+If the tag is already pushed and built (e.g. installing onto a second phone, or after a
+failed install), pass `--install-only`: it skips the bump/tag/wait and just downloads
+that version's APK from the GitHub Release and installs it.
 
 ## Signature mismatch
 
