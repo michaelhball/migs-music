@@ -1,6 +1,7 @@
 # Auto-build a release on every `vX.Y.Z` tag push.
 #
-# Triggered by: `git tag v0.2.0 && git push --tags` (typically via `./release.sh 0.2.0 --tag`).
+# Triggered by: a `vX.Y.Z` tag push (via `scripts/release-to-phone.sh X.Y.Z`). This is the
+# ONLY place release builds are signed — laptops never hold keystore.properties.
 #
 # What this does:
 #   1. Builds a signed APK + AAB.

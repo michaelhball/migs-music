@@ -48,8 +48,11 @@ The script prints the failed job log. Common causes: missing repo secrets
 Secrets and variables → Actions), or lint/test failures that CI catches. Fix, commit,
 and re-run with the **next** version number; don't move or delete the tag.
 
-## Play Store
+## Rules
 
-`release.sh` is the separate path for building an `.aab` locally and uploading to the
-Play Console; see `RELEASING.md`. The tag pushed here also uploads to the Internal
-testing track automatically once `PLAY_SERVICE_ACCOUNT_JSON` is configured.
+- **Release APKs come only from this workflow.** Never run `assembleRelease` /
+  `bundleRelease` locally as a release and never create `keystore.properties` in the repo
+  root; local release builds are deliberately unsigned. The key lives in GitHub secrets
+  and the user's password manager.
+- The tag pushed here also uploads the `.aab` to the Play Internal testing track once
+  `PLAY_SERVICE_ACCOUNT_JSON` is configured; see `RELEASING.md`.

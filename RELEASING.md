@@ -1,6 +1,8 @@
 # Releasing migs music (Android)
 
-End-to-end process for cutting a new version and getting it onto the Play Store.
+End-to-end process for cutting a new version. **Release builds are produced only by the
+`Release` GitHub Actions workflow** (`.github/workflows/release.yml`) on a `vX.Y.Z` tag —
+never on a laptop. Local machines build debug APKs (`com.migsmusic.debug`) only.
 
 ## One-time setup
 
@@ -19,18 +21,28 @@ keytool -genkeypair -v \
 
 Pick a strong password. Store the `.jks` file somewhere outside this repo (a password manager or secured cloud backup).
 
-### 2. Create `keystore.properties` in the repo root
+### 2. Put the keystore into GitHub Actions secrets
 
-Gitignored. Tells Gradle where to find the keystore + how to use it.
+Settings → Secrets and variables → Actions on the repo:
 
-```properties
-storeFile=/Users/you/migs-music-release.jks
-storePassword=<your-password>
-keyAlias=migs-music
-keyPassword=<your-password>
+- `KEYSTORE_BASE64` — `base64 -i ~/migs-music-release.jks | pbcopy`
+- `KEYSTORE_PASSWORD`, `KEY_PASSWORD` — the password you picked
+- `KEY_ALIAS` — `migs-music`
+
+With `gh` logged in, from the repo root:
+
+```bash
+PW=<password>
+base64 -i ~/migs-music-release.jks | gh secret set KEYSTORE_BASE64
+printf '%s' "$PW" | gh secret set KEYSTORE_PASSWORD
+printf '%s' migs-music | gh secret set KEY_ALIAS
+printf '%s' "$PW" | gh secret set KEY_PASSWORD
 ```
 
-The release build picks this up automatically; debug builds are unaffected.
+Keep the `.jks` and the password in a password manager. Do **not** create a
+`keystore.properties` in the repo root: the Gradle signing config only attaches when that
+file exists, and its absence is what guarantees a local `assembleRelease` is unsigned and
+can't be mistaken for a real release.
 
 ### 3. Set up Play App Signing (optional but recommended)
 
@@ -44,44 +56,25 @@ When you create the Play Console listing, opt into **Play App Signing**. Google 
 - Add screenshots: 2–8 phone, plus a 1024×500 feature graphic.
 - Set up Internal testing track, add yourself as a tester.
 
-## Fastest path: release straight to the phone
-
-```bash
-scripts/release-to-phone.sh 0.2.0          # bump, tag, wait for CI, download APK, adb install
-```
-
-Uses the GitHub-built signed APK, so it works from any computer with `gh` logged in — no
-local keystore needed. See `.claude/skills/release-to-phone/SKILL.md` for the caveats
-(debug-signed phone installs need `--replace`, which wipes app data).
-
 ## Each release
 
 ```bash
-# 1. From the repo root, on a clean main branch:
-./release.sh 0.2.0 --tag
-
-# This:
-#   - bumps versionCode (monotonic integer, required by Play Store)
-#   - bumps versionName to 0.2.0
-#   - runs lint + unit tests
-#   - builds a signed Android App Bundle at:
-#       app/build/outputs/bundle/release/app-release.aab
-#   - commits the version bump + tags v0.2.0
-
-# 2. Push the tag and the bump commit:
-git push && git push --tags
-
-# 3. Upload to Play Console:
-#    Internal testing → New release → upload app/build/outputs/bundle/release/app-release.aab
-#    Add release notes, save, review, roll out.
-
-# 4. Smoke-test on the internal testing track. Once it looks good, promote to
-#    closed beta → open beta → production. Each track has its own rollout %.
+scripts/release-to-phone.sh 0.3.0              # bump, commit, tag v0.3.0, push, wait for CI,
+                                               # download migs-music-0.3.0.apk, adb install -r
+scripts/release-to-phone.sh 0.3.0 --no-install # same, but stop after the download
 ```
 
-## Automated release on tag push (optional)
+The workflow signs with the secrets above and attaches `migs-music-<version>.apk` and
+`.aab` to the GitHub Release for the tag. Updates install in place on the phone (same key,
+higher `versionCode`) — no uninstall, no data loss. The Claude Code skill
+`.claude/skills/release-to-phone/SKILL.md` wraps the same script.
 
-There's a `.github/workflows/release.yml` that builds a signed `.aab` automatically when you push a `vX.Y.Z` tag. It attaches the `.aab` to the GitHub Release page for that tag — uploading from there to the Play Console is still manual (the Play Developer API path is a follow-up).
+If a release is broken, fix forward: commit, then cut the **next** version. Never move or
+delete a tag.
+
+## What the tag workflow does
+
+`.github/workflows/release.yml` builds a signed `.apk` + `.aab` when a `vX.Y.Z` tag is pushed and attaches both to the GitHub Release for that tag. Uploading the `.aab` to the Play Console is manual unless the Play step below is configured.
 
 Required GitHub Secrets (Settings → Secrets and variables → Actions):
 
@@ -90,7 +83,6 @@ Required GitHub Secrets (Settings → Secrets and variables → Actions):
 - `KEY_ALIAS` — alias inside the keystore (`migs-music` if you followed the keytool example).
 - `KEY_PASSWORD` — key password (typically same as keystore password if you used `keytool` defaults).
 
-Once configured, `./release.sh 0.2.0 --tag && git push --tags` triggers the workflow.
 
 ## Play Store auto-upload (Internal track)
 
@@ -132,8 +124,7 @@ After that, pushing a `v*` tag triggers the workflow which uploads the AAB to th
 Same as before — the workflow just does more:
 
 ```bash
-./release.sh 0.2.0 --tag
-git push && git push --tags
+scripts/release-to-phone.sh 0.2.0
 ```
 
 Then watch [Actions](https://github.com/michaelhball/migs-music/actions) for the build. When it goes green:
@@ -148,7 +139,7 @@ Stays manual on purpose. Open the Play Console → Internal testing → Promote 
 ## Versioning convention
 
 - `versionName` is the user-facing string ("0.2.0"). Follows semver: bump major on breaking changes, minor on features, patch on fixes.
-- `versionCode` is a monotonic integer. Play Store rejects uploads with the same versionCode as a prior version, so this MUST always go up. `release.sh` bumps it by 1 each time.
+- `versionCode` is a monotonic integer. Play Store rejects uploads with the same versionCode as a prior version, so this MUST always go up. `scripts/release-to-phone.sh` bumps it by 1 each time.
 
 If you ever need to push a hotfix between releases, bump versionCode but keep versionName the same patch level (or bump to 0.2.0.1, the dot-something convention, by editing manually).
 
@@ -159,7 +150,6 @@ Before tagging:
 - [ ] `./gradlew :app:ktlintCheck :app:testDebugUnitTest` — green.
 - [ ] `scripts/device-smoke-test.sh` — green on a real device.
 - [ ] Manually exercise the Mac sync → phone import flow end-to-end on the dev device.
-- [ ] Run `./release.sh <version> --tag`. (Bumps version, commits, tags.)
-- [ ] `git push && git push --tags`. CI takes over: builds APK + AAB, attaches to GitHub Release, uploads AAB to Play Internal track (if `PLAY_SERVICE_ACCOUNT_JSON` is configured).
+- [ ] Run `scripts/release-to-phone.sh <version>`. (Bumps version, commits, tags, pushes.) CI takes over: builds APK + AAB, attaches to GitHub Release, uploads AAB to Play Internal track (if `PLAY_SERVICE_ACCOUNT_JSON` is configured).
 - [ ] Smoke-test on the Internal track for at least a few hours.
 - [ ] Promote in Play Console (manual click) when satisfied.

@@ -21,8 +21,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // Release signing config. Reads from a local-only `keystore.properties` (gitignored)
-    // so the keystore path + passwords never land in the repo. If the file is absent (the
+    // Release signing config. Reads `keystore.properties`, which only the Release GitHub
+    // Actions workflow writes (from repo secrets); it must not exist on a dev machine, so a
+    // local release build stays unsigned. If the file is absent (the
     // common case during dev), the release build will still produce an unsigned .aab —
     // useful for size checks but not Play-uploadable. Set up: see RELEASING.md.
     signingConfigs {
