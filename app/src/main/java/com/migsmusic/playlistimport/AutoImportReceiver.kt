@@ -11,7 +11,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Triggered by `adb shell am broadcast -a com.migsmusic.AUTO_IMPORT -p com.migsmusic`,
+ * Triggered by `adb shell am broadcast -a com.migsmusic.AUTO_IMPORT -p <applicationId>`
+ * (release: com.migsmusic, debug: com.migsmusic.debug),
  * sent by the Mac sync app after pushing M3U files + manifest into our app media dir.
  * Imports any pending `.m3u` files, applies per-song orphan cleanup, and prunes any
  * synced playlists not in the manifest.

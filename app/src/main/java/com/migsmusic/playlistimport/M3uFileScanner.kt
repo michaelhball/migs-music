@@ -2,6 +2,7 @@ package com.migsmusic.playlistimport
 
 import android.net.Uri
 import android.util.Log
+import com.migsmusic.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -30,7 +31,7 @@ data class DiscoveredM3u(
  * protect your privacy, choose another folder." So we own a private dir nobody else
  * needs to write to (except adb push during sync, which works against this path).
  */
-const val SYNC_DIR_PATH: String = "/sdcard/Android/media/com.migsmusic/sync"
+const val SYNC_DIR_PATH: String = "/sdcard/Android/media/${BuildConfig.APPLICATION_ID}/sync"
 
 /**
  * Lists every `.m3u` / `.m3u8` file in the app's sync directory. IO-bound — runs on

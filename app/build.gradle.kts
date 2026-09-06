@@ -13,6 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.migsmusic"
+        resValue("string", "app_name", "migs music")
         minSdk = 26
         targetSdk = 35
         versionCode = 2
@@ -39,6 +40,15 @@ android {
     }
 
     buildTypes {
+        // Debug builds are a separate app on the phone (com.migsmusic.debug, "migs music dev")
+        // so installing one for testing never replaces — or wipes — the release install.
+        // Consequence: the Mac sync app targets the release package; put playlists onto a
+        // debug build with scripts/sync-debug-playlists.sh instead.
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "migs music dev")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

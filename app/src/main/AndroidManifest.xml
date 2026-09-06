@@ -48,7 +48,8 @@
         </service>
 
         <!--
-            Triggered by `adb shell am broadcast -a com.migsmusic.AUTO_IMPORT -p com.migsmusic`,
+            Triggered by `adb shell am broadcast -a com.migsmusic.AUTO_IMPORT -p <applicationId>`
+            (release: com.migsmusic, debug: com.migsmusic.debug),
             sent by the Mac companion app to push a playlist sync. Manifest-declared so the
             broadcast wakes the app even if it's not currently running. android:exported=true
             because adb shell sends as the shell user (a different uid than ours); the action

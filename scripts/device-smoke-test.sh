@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_DIR="$ROOT_DIR/build/device-smoke"
+# Debug builds install as their own app; the release install (com.migsmusic) is never
+# touched by this script — in particular not by the pm clear below.
+PKG=com.migsmusic.debug
 
 mkdir -p "$ARTIFACT_DIR"
 
@@ -36,17 +39,17 @@ echo "Muting media stream for automated playback checks..."
 adb shell cmd media_session volume --stream 3 --set 0 >/dev/null || true
 
 echo "Force-stopping and clearing app data for a clean test slate..."
-adb shell am force-stop com.migsmusic >/dev/null || true
-adb shell pm clear com.migsmusic >/dev/null || true
+adb shell am force-stop "$PKG" >/dev/null || true
+adb shell pm clear "$PKG" >/dev/null || true
 # Re-grant audio permission since pm clear revokes runtime grants.
-adb shell pm grant com.migsmusic android.permission.READ_MEDIA_AUDIO >/dev/null || true
-adb shell pm grant com.migsmusic android.permission.POST_NOTIFICATIONS >/dev/null || true
+adb shell pm grant "$PKG" android.permission.READ_MEDIA_AUDIO >/dev/null || true
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null || true
 
 echo "Clearing logs and running instrumentation tests (full suite)..."
 adb logcat -c
 INSTR_OUT="$ARTIFACT_DIR/instrumentation.txt"
 adb shell am instrument -w -r \
-  com.migsmusic.test/androidx.test.runner.AndroidJUnitRunner \
+  "$PKG.test/androidx.test.runner.AndroidJUnitRunner" \
   | tee "$INSTR_OUT"
 
 # `am instrument -w -r` writes status lines starting with INSTRUMENTATION_*; the final OK/FAILURES line
@@ -68,7 +71,7 @@ else
 fi
 
 echo "Launching app for visual capture..."
-adb shell am start -n com.migsmusic/.MainActivity >/dev/null
+adb shell am start -n "$PKG/com.migsmusic.MainActivity" >/dev/null
 sleep 3
 
 echo "Capturing screenshot and recent logs..."
