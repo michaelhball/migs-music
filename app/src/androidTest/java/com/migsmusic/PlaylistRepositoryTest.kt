@@ -60,7 +60,7 @@ class PlaylistRepositoryTest {
     @Test
     fun upsertSyncedPlaylist_createsRowWhenNoneExists() =
         runBlocking {
-            val id = repository.upsertSyncedPlaylist("Workout", listOf(1L, 2L, 3L))
+            val id = repository.upsertSyncedPlaylist("Workout", paths(1L, 2L, 3L))
 
             val songs = repository.observePlaylistSongs(id).first()
             assertEquals(listOf(1L, 2L, 3L), songs.map { it.songId })
@@ -72,8 +72,8 @@ class PlaylistRepositoryTest {
     @Test
     fun upsertSyncedPlaylist_replacesContentsOfExistingSyncedPlaylist() =
         runBlocking {
-            val firstId = repository.upsertSyncedPlaylist("Workout", listOf(1L, 2L, 3L))
-            val secondId = repository.upsertSyncedPlaylist("Workout", listOf(4L, 1L))
+            val firstId = repository.upsertSyncedPlaylist("Workout", paths(1L, 2L, 3L))
+            val secondId = repository.upsertSyncedPlaylist("Workout", paths(4L, 1L))
 
             // Same row id — we replaced contents in-place, didn't create a new row.
             assertEquals(firstId, secondId)
@@ -92,7 +92,7 @@ class PlaylistRepositoryTest {
 
             // Mac sync arrives with a Workout.m3u — should land in a NEW synced row, not
             // merge into the manual one.
-            val syncedId = repository.upsertSyncedPlaylist("Workout", listOf(3L, 4L))
+            val syncedId = repository.upsertSyncedPlaylist("Workout", paths(3L, 4L))
 
             assertNotEquals(manualId, syncedId)
 
@@ -105,7 +105,7 @@ class PlaylistRepositoryTest {
     @Test
     fun upsertSyncedPlaylist_resetsToManifestOrderAfterUserManualReorder() =
         runBlocking {
-            val id = repository.upsertSyncedPlaylist("Workout", listOf(1L, 2L, 3L))
+            val id = repository.upsertSyncedPlaylist("Workout", paths(1L, 2L, 3L))
 
             // User drags song 1 to the bottom on the phone.
             repository.moveSong(id, fromIndex = 0, toIndex = 2)
@@ -113,7 +113,7 @@ class PlaylistRepositoryTest {
             assertEquals(listOf(2L, 3L, 1L), afterManualMove)
 
             // Mac sync re-runs with the original order — replace wins.
-            repository.upsertSyncedPlaylist("Workout", listOf(1L, 2L, 3L))
+            repository.upsertSyncedPlaylist("Workout", paths(1L, 2L, 3L))
             val afterResync = repository.observePlaylistSongs(id).first().map { it.songId }
             assertEquals(listOf(1L, 2L, 3L), afterResync)
         }
@@ -121,7 +121,7 @@ class PlaylistRepositoryTest {
     @Test
     fun upsertSyncedPlaylist_emptyIdsListClearsExistingButKeepsRow() =
         runBlocking {
-            val id = repository.upsertSyncedPlaylist("Workout", listOf(1L, 2L))
+            val id = repository.upsertSyncedPlaylist("Workout", paths(1L, 2L))
 
             val emptyId = repository.upsertSyncedPlaylist("Workout", emptyList())
             assertEquals(id, emptyId)
@@ -132,7 +132,7 @@ class PlaylistRepositoryTest {
     @Test
     fun deletePlaylist_cascadesPlaylistSongsRows() =
         runBlocking {
-            val id = repository.upsertSyncedPlaylist("Workout", listOf(1L, 2L, 3L))
+            val id = repository.upsertSyncedPlaylist("Workout", paths(1L, 2L, 3L))
             repository.deletePlaylist(id)
 
             // The synced playlist list shouldn't include it anymore.
@@ -144,8 +144,8 @@ class PlaylistRepositoryTest {
     @Test
     fun getOrphanSongIds_returnsOnlySongsExclusiveToRemovedPlaylists() =
         runBlocking {
-            val a = repository.upsertSyncedPlaylist("A", listOf(1L, 2L))
-            val b = repository.upsertSyncedPlaylist("B", listOf(2L, 3L))
+            val a = repository.upsertSyncedPlaylist("A", paths(1L, 2L))
+            val b = repository.upsertSyncedPlaylist("B", paths(2L, 3L))
 
             // Removing playlist A: song 1 is orphaned (only A had it), song 2 isn't (B still
             // has it).
@@ -173,6 +173,14 @@ class PlaylistRepositoryTest {
             // dedicated test above); here we just confirm there's no synced match.
             assertNull(db.playlistDao().findSyncedPlaylistByName("OnlyManual"))
         }
+
+    /**
+     * Synced playlists are keyed by absolute path (what the .m3u carries), not MediaStore id.
+     * Mirrors the layout [fakeSong] uses so each path resolves to the seeded song row.
+     */
+    private fun paths(vararg ids: Long): List<String> = ids.map { id -> "/storage/emulated/0/Music/Album $id/${titles.getValue(id)}.mp3" }
+
+    private val titles = mapOf(1L to "One", 2L to "Two", 3L to "Three", 4L to "Four")
 
     private fun fakeSong(
         id: Long,
