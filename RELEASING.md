@@ -59,9 +59,10 @@ When you create the Play Console listing, opt into **Play App Signing**. Google 
 ## Each release
 
 ```bash
-scripts/release-to-phone.sh 0.3.0              # bump, commit, tag v0.3.0, push, wait for CI,
-                                               # download migs-music-0.3.0.apk, adb install -r
-scripts/release-to-phone.sh 0.3.0 --no-install # same, but stop after the download
+scripts/release-to-phone.sh 0.3.0              # new version: bump, commit, tag, push, wait for
+                                               # CI, download migs-music-0.3.0.apk, adb install -r
+scripts/release-to-phone.sh 0.3.0              # already released: just download + install it
+scripts/release-to-phone.sh 0.3.0 --no-install # stop after the download
 ```
 
 The workflow signs with the secrets above and attaches `migs-music-<version>.apk` and

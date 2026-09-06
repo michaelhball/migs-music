@@ -34,14 +34,44 @@ If something fails after a push (e.g. a smoke run finds a regression), patch wit
 - **No mocks for the database** — tests hit real Room. Confidence in migrations beats test speed.
 - **Schema changes go through migrations**, not destructive fallback. See `MIGRATION_2_3` in `AppDatabase.kt` for the pattern.
 
-## Debug vs release on the phone
+## Builds: two apps, two processes
 
-Debug builds install as a **separate app**: `com.migsmusic.debug`, labelled "migs music dev".
-The release install (`com.migsmusic`, signed by CI — see `.claude/skills/release-to-phone`)
-is never replaced or wiped by `installDebug` or the smoke script. The Mac sync app only
-targets the release package; to get playlists into a debug build run
-`scripts/sync-debug-playlists.sh` (replays the Mac app's sync against the debug package,
-never deletes audio).
+### Release builds — GitHub Actions only
+
+- **Release APKs/AABs are built and signed ONLY by the `Release` workflow**
+  (`.github/workflows/release.yml`), triggered by a `vX.Y.Z` tag. Never build or sign a
+  release on a laptop, never create `keystore.properties` in the repo root (its absence is
+  what keeps a local `assembleRelease` unsigned). The key lives in repo secrets + the
+  user's password manager.
+- The one command, from any computer with `gh` logged in and the phone on adb:
+  `scripts/release-to-phone.sh <version>` (skill: `.claude/skills/release-to-phone`).
+  It is idempotent on the version: if `v<version>` is already released it just installs
+  that APK; if it's tagged but still building it waits; otherwise it bumps
+  `versionCode`/`versionName` on latest `main`, commits, tags, pushes, waits for CI, then
+  downloads and `adb install -r`s the APK.
+- Installs are **in place** (same key, higher `versionCode`): the phone keeps playlists,
+  loves and settings. No re-sync needed after an update.
+- Package `com.migsmusic`, label "migs music". This is what the Mac sync app targets.
+- Broken release? Fix forward and cut the next version. Never move or delete a tag.
+
+### Debug builds — local, a separate app
+
+- `./gradlew :app:installDebug` builds the working tree and installs it as
+  **`com.migsmusic.debug`, labelled "migs music dev"**, side by side with the release. It
+  has its own data, its own sync inbox (`/sdcard/Android/media/com.migsmusic.debug/sync`),
+  and can never replace or wipe the release install.
+- Signed with the machine's `~/.android/debug.keystore`. Installing a debug build from a
+  *different* computer therefore needs `adb uninstall com.migsmusic.debug` first — that only
+  loses debug-app data, which is disposable.
+- First launch on the OnePlus: grant music access by hand in the app. `adb shell pm grant`
+  and the test harness's permission rule are both refused by this ROM.
+- Playlists: the Mac menu-bar app only syncs to the release package, so run
+  `scripts/sync-debug-playlists.sh` — it replays the Mac app's sync (manifest → bundled
+  sync script → AUTO_IMPORT broadcast) against the debug package, using the playlists
+  ticked in the Mac app, and never deletes audio.
+- Instrumented tests (`scripts/device-smoke-test.sh`, or `am instrument` against
+  `com.migsmusic.debug.test`) run **only** against the debug app. They wipe its playlists
+  in setup; re-run `scripts/sync-debug-playlists.sh` afterwards.
 
 ## Useful commands
 
