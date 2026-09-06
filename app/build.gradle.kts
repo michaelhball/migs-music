@@ -27,6 +27,16 @@ android {
     // common case during dev), the release build will still produce an unsigned .aab —
     // useful for size checks but not Play-uploadable. Set up: see RELEASING.md.
     signingConfigs {
+        // Debug signing uses the keystore checked into the repo instead of each machine's
+        // ~/.android/debug.keystore, so a debug build from any computer updates the
+        // com.migsmusic.debug install in place. It can only ever sign the debug app —
+        // the release key lives in CI secrets, never here.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             val props = Properties()
             val propsFile = rootProject.file("keystore.properties")
@@ -49,6 +59,7 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             resValue("string", "app_name", "migs music dev")
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false

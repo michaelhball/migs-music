@@ -60,9 +60,10 @@ If something fails after a push (e.g. a smoke run finds a regression), patch wit
   **`com.migsmusic.debug`, labelled "migs music dev"**, side by side with the release. It
   has its own data, its own sync inbox (`/sdcard/Android/media/com.migsmusic.debug/sync`),
   and can never replace or wipe the release install.
-- Signed with the machine's `~/.android/debug.keystore`. Installing a debug build from a
-  *different* computer therefore needs `adb uninstall com.migsmusic.debug` first — that only
-  loses debug-app data, which is disposable.
+- Signed with the **checked-in `debug.keystore`** (password `android`, alias
+  `androiddebugkey`), not the machine's `~/.android` one, so `installDebug` from any
+  computer updates the debug app in place (or adds it if absent). That key can only sign
+  the debug app; the release key never leaves CI secrets.
 - First launch on the OnePlus: grant music access by hand in the app. `adb shell pm grant`
   and the test harness's permission rule are both refused by this ROM.
 - Playlists: the Mac menu-bar app only syncs to the release package, so run

@@ -73,3 +73,6 @@ jacoco.exec
 keystore.properties
 *.jks
 *.keystore
+
+# The project debug keystore is deliberately committed (it only signs com.migsmusic.debug).
+!/debug.keystore
