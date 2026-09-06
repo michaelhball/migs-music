@@ -24,10 +24,17 @@ import com.migsmusic.data.repository.PlaybackSessionRepository
 import com.migsmusic.data.repository.PlaylistRepository
 import com.migsmusic.playback.PlaybackManager
 import com.migsmusic.playlistimport.AutoImportService
+import com.migsmusic.playlistimport.scanForM3uFiles
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class MigsMusicApplication : Application(), ImageLoaderFactory {
     lateinit var appContainer: AppContainer
         private set
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
@@ -86,6 +93,18 @@ class MigsMusicApplication : Application(), ImageLoaderFactory {
                 playbackController = playbackManager,
                 orphanAudioTracker = orphanAudioTracker,
             )
+
+        // Retry the sync inbox after every library scan. A Mac sync that lands before the app
+        // has music permission (fresh install) imports nothing at broadcast time; the .m3u
+        // files would otherwise sit in the inbox until the next sync or a Playlists-tab visit.
+        appScope.launch {
+            libraryRepository.scanCompleted.collect {
+                if (scanForM3uFiles().isNotEmpty()) {
+                    runCatching { autoImportService.importAll() }
+                        .onFailure { Log.w("MigsMusicApplication", "Post-scan inbox import failed", it) }
+                }
+            }
+        }
 
         appContainer =
             AppContainer(

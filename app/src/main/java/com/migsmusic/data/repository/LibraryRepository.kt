@@ -13,6 +13,9 @@ import com.migsmusic.data.local.model.ArtistSummary
 import com.migsmusic.data.local.model.FolderSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -111,7 +114,22 @@ class LibraryRepository(
         }.sortedBy { it.name.lowercase() }
     }
 
-    suspend fun scanDevice(): Int =
+    /**
+     * Fires with the indexed song count each time [scanDevice] finishes. Lets the sync inbox
+     * be retried once the library is actually populated — on a fresh install the Mac sync
+     * can land before music permission is granted, and the broadcast-time import then
+     * matches nothing. Buffered so a scan finishing with no collector yet isn't lost.
+     */
+    private val _scanCompleted = MutableSharedFlow<Int>(replay = 1)
+    val scanCompleted: SharedFlow<Int> = _scanCompleted.asSharedFlow()
+
+    suspend fun scanDevice(): Int {
+        val count = scanDeviceInternal()
+        _scanCompleted.tryEmit(count)
+        return count
+    }
+
+    private suspend fun scanDeviceInternal(): Int =
         withContext(Dispatchers.IO) {
             val contentResolver = context.contentResolver
             val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
