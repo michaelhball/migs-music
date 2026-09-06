@@ -52,14 +52,22 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git ls-remote --exit
     exit 1
 fi
 
-# Gradle needs a JDK; this Mac keeps one outside the usual places.
-if [[ -z "${JAVA_HOME:-}" ]]; then
-    if ! JAVA_HOME=$(/usr/libexec/java_home 2>/dev/null); then
-        JAVA_HOME=$(ls -d "$HOME"/jdk17/*/Contents/Home 2>/dev/null | head -1 || true)
-    fi
+# Gradle needs a JDK. Take JAVA_HOME if it works, otherwise the first candidate whose
+# java actually starts (a half-deleted JDK still has bin/java but fails on launch).
+jdk_works() { [[ -n "$1" && -x "$1/bin/java" ]] && "$1/bin/java" -version >/dev/null 2>&1; }
+if ! jdk_works "${JAVA_HOME:-}"; then
+    JAVA_HOME=""
+    for candidate in \
+        "$(/usr/libexec/java_home 2>/dev/null || true)" \
+        /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+        /opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home \
+        "$HOME"/jdk17/*/Contents/Home \
+        "/Applications/Android Studio.app/Contents/jbr/Contents/Home"; do
+        if jdk_works "$candidate"; then JAVA_HOME="$candidate"; break; fi
+    done
     export JAVA_HOME
 fi
-[[ -n "$JAVA_HOME" && -x "$JAVA_HOME/bin/java" ]] || { echo "✗ No JDK found; set JAVA_HOME." >&2; exit 1; }
+[[ -n "$JAVA_HOME" ]] || { echo "✗ No working JDK found. brew install openjdk@17, or set JAVA_HOME." >&2; exit 1; }
 
 echo "→ Pulling latest main..."
 git pull -q --ff-only origin main
