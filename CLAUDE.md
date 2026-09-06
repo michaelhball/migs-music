@@ -64,8 +64,13 @@ If something fails after a push (e.g. a smoke run finds a regression), patch wit
   `androiddebugkey`), not the machine's `~/.android` one, so `installDebug` from any
   computer updates the debug app in place (or adds it if absent). That key can only sign
   the debug app; the release key never leaves CI secrets.
-- First launch on the OnePlus: grant music access by hand in the app. `adb shell pm grant`
-  and the test harness's permission rule are both refused by this ROM.
+- First launch on the OnePlus: grant music access by hand in the app (ask the user to tap
+  Allow). `adb shell pm grant` and the test harness's permission rule are both refused by
+  this ROM. The inbox is only imported when the AUTO_IMPORT broadcast arrives, so if you
+  synced before the permission was granted, run `scripts/sync-debug-playlists.sh` again
+  afterwards.
+- Needs the sibling repo at `~/projects/migs-music-mac` and the MigsMusicMac app installed
+  (its bundled `migs-tracks` helper reads the Music library).
 - Playlists: the Mac menu-bar app only syncs to the release package, so run
   `scripts/sync-debug-playlists.sh` — it replays the Mac app's sync (manifest → bundled
   sync script → AUTO_IMPORT broadcast) against the debug package, using the playlists
