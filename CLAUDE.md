@@ -13,6 +13,12 @@ After every tested logical change (a feature, a bug fix, a refactor):
 
 **Don't bundle.** A UX polish + a data-loss fix + a docs update should be three commits, not one. If a batch of unrelated work happens to land together, split it before pushing.
 
+**Steps on the phone are the user's.** When a flow needs a hand on the device — tapping
+Allow on a permission prompt, accepting the USB-debugging dialog, switching USB to File
+transfer, unlocking the screen — stop, say exactly what to tap, and wait for the user to
+confirm before continuing. Never assume it happened, and don't try to script around it
+(`pm grant` and the test harness's permission rule are both refused on the user's OnePlus).
+
 **Don't bypass the pre-commit hook.** It runs `ktlintCheck` against staged Kotlin files. If it fails, fix the lint issue and re-stage — never pass `--no-verify`.
 
 **Push is the natural conclusion of "tested and works locally"** — not a step that needs a separate prompt from the user. The user has explicitly authorised direct push to `main`, and slowing the loop down with confirmations adds nothing.
@@ -66,9 +72,10 @@ If something fails after a push (e.g. a smoke run finds a regression), patch wit
   the debug app; the release key never leaves CI secrets.
 - First launch on the OnePlus: grant music access by hand in the app (ask the user to tap
   Allow). `adb shell pm grant` and the test harness's permission rule are both refused by
-  this ROM. The inbox is only imported when the AUTO_IMPORT broadcast arrives, so if you
-  synced before the permission was granted, run `scripts/sync-debug-playlists.sh` again
-  afterwards.
+  this ROM. The sync inbox is imported on the AUTO_IMPORT broadcast, whenever a library
+  scan finishes, and on opening the Playlists tab — so a sync that landed before the
+  permission was granted is picked up on its own once the first scan completes. If it
+  isn't, `scripts/sync-debug-playlists.sh` is safe to re-run.
 - Needs the sibling repo at `~/projects/migs-music-mac` and the MigsMusicMac app installed
   (its bundled `migs-tracks` helper reads the Music library).
 - Playlists: the Mac menu-bar app only syncs to the release package, so run
